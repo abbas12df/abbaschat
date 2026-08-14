@@ -1,0 +1,403 @@
+import 'dart:io';
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import '../models/message.dart';
+import '../../../../core/theme/app_theme.dart';
+
+class MessageBubble extends StatelessWidget {
+  final Message message;
+  final bool isMe;
+  final bool isFirstInGroup;
+  final bool isLastInGroup;
+  final VoidCallback onLongPress;
+  final VoidCallback? onSwipeReply; // Future usage
+  final Function(String url)? onImageTap;
+  final Function(String url, String msgId)? onAudioPlay;
+  final bool isAudioPlaying;
+  final Duration audioPosition;
+  final Duration audioDuration;
+
+  const MessageBubble({
+    super.key,
+    required this.message,
+    required this.isMe,
+    required this.isFirstInGroup,
+    required this.isLastInGroup,
+    required this.onLongPress,
+    this.onSwipeReply,
+    this.onImageTap,
+    this.onAudioPlay,
+    this.isAudioPlaying = false,
+    this.audioPosition = Duration.zero,
+    this.audioDuration = Duration.zero,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    // Enhanced dynamic corner radius
+    const double rLarge = 18.0;
+    const double rSmall = 4.0;
+
+    final BorderRadius borderRadius = BorderRadius.only(
+      topLeft: Radius.circular(isMe ? rLarge : (isFirstInGroup ? rLarge : rSmall)),
+      topRight: Radius.circular(isMe ? (isFirstInGroup ? rLarge : rSmall) : rLarge),
+      bottomLeft: Radius.circular(isMe ? rLarge : (isLastInGroup ? rSmall : rLarge)),
+      bottomRight: Radius.circular(isMe ? (isLastInGroup ? rSmall : rLarge) : rLarge),
+    );
+
+    // Get decoration based on sender and theme
+    final decoration = _getBubbleDecoration(context, borderRadius, isDark);
+
+    return Align(
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: GestureDetector(
+        onLongPress: onLongPress,
+        child: Container(
+          margin: EdgeInsets.only(
+            top: 2,
+            bottom: isLastInGroup ? 8 : 2,
+            left: isMe ? 60 : 10,
+            right: isMe ? 10 : 60,
+          ),
+          decoration: decoration,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(4.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Reply Preview
+                            if (message.replyToId != null) _buildReplyPreview(),
+
+                            // Content
+                            if (message.type == 'image')
+                              _buildImage()
+                            else if (message.type == 'audio')
+                              _buildAudio(context)
+                            else
+                              _buildText(),
+
+                            // Footer (Time & Status)
+                            _buildFooter(),
+                          ],
+                        ),
+                      ),
+
+                      // Reactions Overhead
+                      if (message.reactions != null &&
+                          message.reactions!.isNotEmpty)
+                        Positioned(
+                          bottom: -10,
+                          right: isMe ? null : 0,
+                          left: isMe ? 0 : null,
+                          child: _buildReactionBadge(),
+                        ),
+                    ],
+                  ),
+                ),
+              )
+              .animate()
+              .fadeIn(duration: 300.ms)
+              .slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuad),
+    );
+  }
+
+  Widget _buildReplyPreview() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      margin: const EdgeInsets.only(bottom: 4),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(8),
+        border: Border(
+          left: BorderSide(
+            color: isMe ? Colors.white70 : AppTheme.primaryBrand,
+            width: 3,
+          ),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.reply,
+            size: 12,
+            color: isMe ? Colors.white70 : Colors.grey,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            'رد على رسالة',
+            style: TextStyle(
+              fontSize: 10,
+              color: isMe ? Colors.white70 : Colors.black54,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildText() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Text(
+        message.text,
+        style: TextStyle(
+          fontSize: 16,
+          height: 1.3,
+          color: isMe
+              ? Colors.white
+              : const Color(0xFF1F2937), // Dark grey for easier reading
+        ),
+      ),
+    );
+  }
+
+  Widget _buildImage() {
+    return GestureDetector(
+      onTap: () => onImageTap?.call(message.imageUrl ?? ''),
+      child: Hero(
+        tag: message.imageUrl ?? message.id,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: _getImageWidget(message.imageUrl),
+        ),
+      ),
+    );
+  }
+
+  Widget _getImageWidget(String? url) {
+    if (url == null) return const Icon(Icons.broken_image);
+
+    // Tiny placeholder logic could go here
+    Widget image;
+    if (url.startsWith('http')) {
+      image = Image.network(
+        url,
+        fit: BoxFit.contain,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return SizedBox(
+            width: 200,
+            height: 200,
+            child: Center(
+              child: CircularProgressIndicator(
+                value: loadingProgress.expectedTotalBytes != null
+                    ? loadingProgress.cumulativeBytesLoaded /
+                          loadingProgress.expectedTotalBytes!
+                    : null,
+              ),
+            ),
+          );
+        },
+        errorBuilder: (_, __, ___) => const Icon(Icons.broken_image),
+      );
+    } else if (url.startsWith('/') || url.startsWith('file://')) {
+      image = Image.file(File(url), fit: BoxFit.contain);
+    } else {
+      try {
+        image = Image.memory(base64Decode(url), fit: BoxFit.contain);
+      } catch (e) {
+        return const Center(child: Icon(Icons.error));
+      }
+    }
+
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 280, maxHeight: 400),
+      color: Colors.grey.shade100,
+      child: image,
+    );
+  }
+
+  Widget _buildAudio(BuildContext context) {
+    // We recreate the audio logic here conceptually
+    final durationText = _formatDuration(
+      isAudioPlaying ? audioPosition : audioDuration,
+    );
+    // Ideally pass total duration from meta or calculate.
+    // IF not, we show 0:00 until played.
+
+    return Container(
+      width: 240,
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: isMe
+            ? Colors.white.withValues(alpha: 0.2)
+            : Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: () => onAudioPlay?.call(message.audioUrl ?? '', message.id),
+            child: CircleAvatar(
+              radius: 20,
+              backgroundColor: isMe ? Colors.white : AppTheme.primaryBrand,
+              child: Icon(
+                isAudioPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                color: isMe ? AppTheme.primaryBrand : Colors.white,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Waveform Visual (Fake for aesthetic)
+                SizedBox(
+                  height: 24,
+                  child: Row(
+                    children: List.generate(20, (index) {
+                      // Random heights for static, animated if playing?
+                      // Simple static visual for now
+                      return Expanded(
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 1),
+                          height: 10 + (index % 3) * 5.0,
+                          decoration: BoxDecoration(
+                            color: isMe ? Colors.white70 : Colors.grey.shade400,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  durationText, // Should show actual duration
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: isMe ? Colors.white70 : Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFooter() {
+    return Padding(
+      padding: const EdgeInsets.only(left: 8, right: 8, bottom: 2, top: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          if (message.isEdited)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: Text(
+                'معدلة',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontStyle: FontStyle.italic,
+                  color: isMe
+                      ? Colors.white.withValues(alpha: 0.7)
+                      : Colors.grey.shade500,
+                ),
+              ),
+            ),
+          Text(
+            "${message.timestamp.hour}:${message.timestamp.minute.toString().padLeft(2, '0')}",
+            style: TextStyle(
+              fontSize: 10,
+              color: isMe
+                  ? Colors.white.withValues(alpha: 0.7)
+                  : Colors.grey.shade500,
+            ),
+          ),
+          if (isMe) ...[
+            const SizedBox(width: 4),
+            Icon(
+              message.isRead ? Icons.done_all_rounded : Icons.check_rounded,
+              size: 14,
+              color: message.isRead
+                  ? Colors.lightBlueAccent.shade100
+                  : Colors.white60,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReactionBadge() {
+    if (message.reactions == null || message.reactions!.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade300, width: 1),
+      ),
+      child: Text(
+        message.reactions!.values.toSet().join(' '),
+        style: const TextStyle(fontSize: 12),
+      ),
+      );
+    }
+  }
+
+  String _formatDuration(Duration d) {
+    if (d == Duration.zero) return "0:00";
+    String twoDigits(int n) => n.toString().padLeft(2, "0");
+    String twoDigitSeconds = twoDigits(d.inSeconds.remainder(60));
+    return "${d.inMinutes}:$twoDigitSeconds";
+  }
+
+  // Enhanced decoration with gradients and theme support
+  BoxDecoration _getBubbleDecoration(
+    BuildContext context,
+    BorderRadius borderRadius,
+    bool isDark,
+  ) {
+    if (isMe) {
+      // My messages: gradient background
+      return BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [
+            Color(0xFF0084FF), // Primary blue
+            Color(0xFF0066CC), // Darker blue
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: borderRadius,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      );
+    } else {
+      // Other's messages: solid color based on theme
+      return BoxDecoration(
+        color: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFF0F0F0),
+        borderRadius: borderRadius,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      );
+    }
+  }
+}

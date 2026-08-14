@@ -1,0 +1,12 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'message_bubble.dart';
+
+extension MessageBubbleSystemExtension on MessageBubble {
+  // Method to build system message UI
+  // Note: This logic is moved here or must be part of the main class.
+  // Since we cannot easily patch the class method via extension in Dart without mixing,
+  // we should implement this INSIDE MessageBubble class directly.
+  // But since I am editing the file, I will append the method at the end of MessageBubble class.
+}

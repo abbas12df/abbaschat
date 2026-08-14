@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "787935093988",
+    "firebase_url": "https://ascendant-quest-436416-q7-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "ascendant-quest-436416-q7",
+    "storage_bucket": "ascendant-quest-436416-q7.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:787935093988:android:79e7d26c27f537cbdbb8f1",
+        "android_client_info": {
+          "package_name": "com.example.qqqq"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "787935093988-gilqjnjjq9n4t14jl1i37pmufndbmile.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.qqqq",
+            "certificate_hash": "d75a576bcb015687e0a25074601dadb8dcb3e069"
+          }
+        },
+        {
+          "client_id": "787935093988-qgshh5hgg8u7q8rh9cqgs4pi6770aht2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB3j2VdOiPc9CoOVwQow9fQAbBGNZjn41c"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "787935093988-qgshh5hgg8u7q8rh9cqgs4pi6770aht2.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "787935093988-u743adrlibg002cqs6coead0okre6lh3.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.qqqq"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

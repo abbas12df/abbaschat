@@ -1,0 +1,64 @@
+name: Build iOS App
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build_ios:
+    name: Build iOS App
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          
+      - name: Install Dependencies
+        run: |
+          flutter pub get
+          cd ios
+          pod install --repo-update
+          
+      # -----------------------------------------------------------------------
+      # NOTE TO USER: 
+      # Valid signing is REQUIRED to install the app on a real iPhone.
+      # You must add your Apple Developer certificates to GitHub Secrets.
+      # -----------------------------------------------------------------------
+      
+      # - name: Import Code-Signing Certificates
+      #   uses: apple-actions/import-codesign-certs@v2
+      #   with:
+      #     p12-file-base64: ${{ secrets.P12_BASE64 }}
+      #     p12-password: ${{ secrets.P12_PASSWORD }}
+      
+      # - name: Download Provisioning Profiles
+      #   uses: apple-actions/download-provisioning-profiles@v1
+      #   with:
+      #     bundle-id: com.example.qqqq 
+      #     profile-type: 'IOS_APP_STORE'
+      #     issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
+      #     api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
+      #     api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
+
+      - name: Build iOS (No Code Signing - For Testing Only)
+        # Without signing, this produces a Runner.app, not a valid .ipa for install
+        # To get a real .ipa, you must uncomment the signing steps above and configure secrets
+        run: flutter build ios --release --no-codesign
+
+      - name: Compress App (Payload)
+        run: |
+          mkdir Payload
+          mv build/ios/iphoneos/Runner.app Payload/
+          zip -r "qqqq_ios_unsigned.ipa" Payload
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-app-unsigned
+          path: qqqq_ios_unsigned.ipa
