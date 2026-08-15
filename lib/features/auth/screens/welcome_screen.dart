@@ -62,6 +62,13 @@ class WelcomeScreen extends StatelessWidget {
                           'assets/images/nisaba_chroma_final.png',
                           width: 250,
                           fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Icon(
+                              Icons.chat_bubble_rounded,
+                              size: 150,
+                              color: theme.colorScheme.primary,
+                            );
+                          },
                         ),
                       )
                       .animate()

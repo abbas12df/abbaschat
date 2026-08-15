@@ -1,9 +1,11 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:io';
+import 'package:qqqq/features/chat/models/upload_progress.dart';
 import 'package:uuid/uuid.dart'; // Added
 import 'dart:convert';
 import 'package:pointycastle/export.dart' as pc;
 import 'package:basic_utils/basic_utils.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart'; // Added
@@ -62,6 +64,12 @@ final userProfileProvider = StreamProvider.family<UserModel?, String>((
 // Tracks the currently open chat room ID (if any) to suppress notifications
 final activeChatRoomIdProvider = StateProvider<String?>((ref) => null);
 
+// Provider for upload progress UI tracking
+final uploadProgressProvider = StreamProvider.family.autoDispose<UploadProgress, String>((ref, messageId) {
+  final repo = ref.watch(chatRepositoryProvider);
+  return repo.uploadProgressStream.where((p) => p.fileId == messageId);
+});
+
 class ChatRepository {
   final Map<String, Map<String, dynamic>> _pendingSegments = {};
   final LocalStorageService _local;
@@ -79,9 +87,28 @@ class ChatRepository {
 
   // File Transfer State (Chunking)
   final Map<String, RandomAccessFile> _activeDownloads = {};
-  final Map<String, int> _downloadReceivedBytes = {};
-  final Map<String, int> _downloadTotalBytes = {};
+  final Map<String, Set<int>> _downloadReceivedChunks = {};
+  final Map<String, int> _downloadTotalChunks = {};
+  final Map<String, int> _downloadChunkSizes = {};
+  final Map<String, String> _downloadExpectedHashes = {};
   final Map<String, String> _downloadFileNames = {};
+
+  // Upload Tracking
+  final Map<String, UploadProgress> _activeUploads = {};
+  final StreamController<UploadProgress> _uploadProgressController =
+      StreamController<UploadProgress>.broadcast();
+  Stream<UploadProgress> get uploadProgressStream =>
+      _uploadProgressController.stream;
+
+  void cancelUpload(String fileId) {
+    if (_activeUploads.containsKey(fileId)) {
+      _activeUploads[fileId]!.cancelToken.cancel();
+      _activeUploads[fileId] = _activeUploads[fileId]!.copyWith(
+        status: UploadStatus.cancelled,
+      );
+      _uploadProgressController.add(_activeUploads[fileId]!);
+    }
+  }
 
   // P2P Sync Status Broadcast
   final StreamController<SyncStatus> _syncStatusController =
@@ -371,6 +398,12 @@ class ChatRepository {
       final String senderId = data['sender_id'];
       debugPrint('DEBUG: Processing message $messageId from $senderId');
 
+      final currentUser = _auth.currentUser;
+      if (currentUser == null) {
+        debugPrint('DEBUG: No current user!');
+        return;
+      }
+
       final Map<String, dynamic> encryptedBundle = Map<String, dynamic>.from(
         data['payload'],
       );
@@ -391,32 +424,78 @@ class ChatRepository {
 
         // --- VERIFY SIGNATURE ---
         final signature = encryptedBundle['signature'] as String?;
-        if (signature != null) {
-          final senderKey = await _keyRepo.getUserPublicKey(senderId);
-          if (senderKey != null) {
-            final isValid = CryptoService().verifyString(
-              decryptedText,
-              signature,
-              senderKey,
+        if (signature == null || signature.isEmpty) {
+          debugPrint(
+            'SECURITY ALERT: Missing Signature for message $messageId from $senderId. Dropping.',
+          );
+          await _relay.sendAck(senderId: senderId, messageId: messageId);
+          await _relay.deleteFromRelay(messageId);
+          return;
+        }
+
+        final senderKey = await _keyRepo.getUserPublicKey(senderId);
+        if (senderKey == null || senderKey.isEmpty) {
+          debugPrint(
+            'SECURITY ALERT: No trusted public key for sender $senderId. Dropping.',
+          );
+          await _relay.sendAck(senderId: senderId, messageId: messageId);
+          await _relay.deleteFromRelay(messageId);
+          return;
+        }
+
+        try {
+          // The signature MUST be valid for the decryptedText using the exact senderId's public key.
+          final isValid = CryptoService().verifyString(
+            decryptedText,
+            signature,
+            senderKey,
+          );
+
+          if (!isValid) {
+            debugPrint(
+              'SECURITY ALERT: Invalid Signature for message $messageId from $senderId. Dropping.',
             );
-            if (!isValid) {
-              debugPrint(
-                'SECURITY ALERT: Invalid Signature for message $messageId from $senderId. Dropping.',
-              );
-              throw Exception('Invalid Digital Signature');
-            }
-            debugPrint('DEBUG: Signature Verified form $senderId');
+            await _relay.sendAck(senderId: senderId, messageId: messageId);
+            await _relay.deleteFromRelay(messageId);
+            return;
           }
+          debugPrint('DEBUG: Signature Verified from $senderId');
+
+          // --- SECURITY: REPLAY PROTECTION (DEDUPLICATION) ---
+          final ciphertext = encryptedBundle['ciphertext'] as String?;
+          if (ciphertext != null) {
+            final hashBytes = sha256.convert(utf8.encode(ciphertext));
+            final hash = hashBytes.toString();
+
+            final isDuplicate = await _local.isMessageHashProcessed(
+              currentUser.uid,
+              hash,
+            );
+            if (isDuplicate) {
+              debugPrint(
+                'SECURITY ALERT: Duplicate message detected (replay protection). Dropping message $messageId from $senderId.',
+              );
+              await _relay.sendAck(senderId: senderId, messageId: messageId);
+              await _relay.deleteFromRelay(messageId);
+              return;
+            }
+
+            // Mark as processed immediately to prevent parallel replays
+            await _local.markMessageHashProcessed(currentUser.uid, hash);
+          }
+          // ---------------------------------------------------
+        } catch (e) {
+          debugPrint(
+            'SECURITY ALERT: Error verifying signature for message $messageId from $senderId: $e',
+          );
+          await _relay.sendAck(senderId: senderId, messageId: messageId);
+          await _relay.deleteFromRelay(messageId);
+          return;
         }
         // ------------------------
 
         // 2. Hydrate Message
         // We construct the roomId based on participants sorted
-        final currentUser = _auth.currentUser;
-        if (currentUser == null) {
-          debugPrint('DEBUG: No current user!');
-          return;
-        }
         // PARSE JSON PAYLOAD FIRST
         Map<String, dynamic> messagePayload = {};
         try {
@@ -645,6 +724,18 @@ class ChatRepository {
           debugPrint('DEBUG: Received GROUP_UPDATE for $roomId');
           final room = _local.getConversation(currentUser.uid, roomId);
           if (room != null) {
+            if (!_hasGroupPermission(
+              senderId,
+              room,
+              requiredPerm: 'change_info',
+            )) {
+              debugPrint(
+                'SECURITY ALERT: Unauthorized GROUP_UPDATE from $senderId. Dropping.',
+              );
+              await _relay.sendAck(senderId: senderId, messageId: messageId);
+              await _relay.deleteFromRelay(messageId);
+              return;
+            }
             final newRoom = Map<String, dynamic>.from(room);
             if (messagePayload['name'] != null) {
               newRoom['groupName'] = messagePayload['name'];
@@ -702,6 +793,18 @@ class ChatRepository {
           debugPrint('DEBUG: Received GROUP_MEMBER_ADD for $roomId');
           final room = _local.getConversation(currentUser.uid, roomId);
           if (room != null) {
+            if (!_hasGroupPermission(
+              senderId,
+              room,
+              requiredPerm: 'add_members',
+            )) {
+              debugPrint(
+                'SECURITY ALERT: Unauthorized GROUP_MEMBER_ADD from $senderId. Dropping.',
+              );
+              await _relay.sendAck(senderId: senderId, messageId: messageId);
+              await _relay.deleteFromRelay(messageId);
+              return;
+            }
             final addedIds = List<String>.from(
               messagePayload['added_ids'] ?? [],
             );
@@ -717,7 +820,10 @@ class ChatRepository {
           // ط¥ط¶ط§ظپط© ط±ط³ط§ظ„ط© ظ†ط¸ط§ظ… ظ…ط­ظ„ظٹط© (System Message)
           final addedIds = List<String>.from(messagePayload['added_ids'] ?? []);
           if (addedIds.isNotEmpty) {
-            await _saveLocalSystemMessage(roomId, 'طھظ…طھ ط¥ط¶ط§ظپط© ط£ط¹ط¶ط§ط، ط¬ط¯ط¯');
+            await _saveLocalSystemMessage(
+              roomId,
+              'طھظ…طھ ط¥ط¶ط§ظپط© ط£ط¹ط¶ط§ط، ط¬ط¯ط¯',
+            );
           }
 
           await _relay.sendAck(senderId: senderId, messageId: messageId);
@@ -733,6 +839,24 @@ class ChatRepository {
             'DEBUG: Target removed_id=$targetId, currentUser.uid=${currentUser.uid}',
           );
 
+          final room = _local.getConversation(currentUser.uid, roomId);
+          if (room != null) {
+            // A user can remove themselves (leave). Otherwise, they need remove_members perm.
+            if (senderId != targetId &&
+                !_hasGroupPermission(
+                  senderId,
+                  room,
+                  requiredPerm: 'remove_members',
+                )) {
+              debugPrint(
+                'SECURITY ALERT: Unauthorized GROUP_MEMBER_REMOVE from $senderId. Dropping.',
+              );
+              await _relay.sendAck(senderId: senderId, messageId: messageId);
+              await _relay.deleteFromRelay(messageId);
+              return;
+            }
+          }
+
           if (targetId == currentUser.uid) {
             // I was removed (or I left) -> Delete chat
             debugPrint(
@@ -745,7 +869,6 @@ class ChatRepository {
             debugPrint(
               'DEBUG: Someone else ($targetId) was removed, updating participants',
             );
-            final room = _local.getConversation(currentUser.uid, roomId);
             if (room != null) {
               final participants = List<String>.from(
                 room['participants'] ?? [],
@@ -764,7 +887,10 @@ class ChatRepository {
             // ط¥ط¶ط§ظپط© ط±ط³ط§ظ„ط© ظ†ط¸ط§ظ… ظ…ط­ظ„ظٹط© ط¹ظ†ط¯ ظ…ط؛ط§ط¯ط±ط© ط´ط®طµ ط¢ط®ط±
             final user = await getUserData(targetId);
             final name = user?.displayName ?? 'ط¹ط¶ظˆ';
-            await _saveLocalSystemMessage(roomId, '$name ط؛ط§ط¯ط± ط§ظ„ظ…ط¬ظ…ظˆط¹ط©');
+            await _saveLocalSystemMessage(
+              roomId,
+              '$name ط؛ط§ط¯ط± ط§ظ„ظ…ط¬ظ…ظˆط¹ط©',
+            );
           }
           await _relay.sendAck(senderId: senderId, messageId: messageId);
           await _relay.deleteFromRelay(messageId);
@@ -776,6 +902,18 @@ class ChatRepository {
           debugPrint('DEBUG: Received GROUP_ADMIN_UPDATE for $roomId');
           final room = _local.getConversation(currentUser.uid, roomId);
           if (room != null) {
+            if (!_hasGroupPermission(
+              senderId,
+              room,
+              requiredPerm: 'manage_admins',
+            )) {
+              debugPrint(
+                'SECURITY ALERT: Unauthorized GROUP_ADMIN_UPDATE from $senderId. Dropping.',
+              );
+              await _relay.sendAck(senderId: senderId, messageId: messageId);
+              await _relay.deleteFromRelay(messageId);
+              return;
+            }
             final targetId = messagePayload['target_id'];
             final isPromote = messagePayload['is_promote'] ?? true;
             final admins = List<String>.from(room['admins'] ?? []);
@@ -828,6 +966,18 @@ class ChatRepository {
           debugPrint('DEBUG: Received GROUP_ADMIN_PERMS_UPDATE for $roomId');
           final room = _local.getConversation(currentUser.uid, roomId);
           if (room != null) {
+            if (!_hasGroupPermission(
+              senderId,
+              room,
+              requiredPerm: 'manage_admins',
+            )) {
+              debugPrint(
+                'SECURITY ALERT: Unauthorized GROUP_ADMIN_PERMS_UPDATE from $senderId. Dropping.',
+              );
+              await _relay.sendAck(senderId: senderId, messageId: messageId);
+              await _relay.deleteFromRelay(messageId);
+              return;
+            }
             final targetId = messagePayload['target_id'];
             final permissions = List<String>.from(
               messagePayload['permissions'] ?? [],
@@ -1035,6 +1185,9 @@ class ChatRepository {
           final fileId = messagePayload['fileId'];
           final fileName = messagePayload['fileName'];
           final fileSize = messagePayload['fileSize'];
+          final chunks = messagePayload['chunks'] ?? 1;
+          final chunkSize = messagePayload['chunkSize'] ?? (512 * 1024);
+          final fileHash = messagePayload['fileHash'] ?? '';
 
           if (fileId != null && fileName != null) {
             // Create Placeholder Message
@@ -1044,8 +1197,10 @@ class ChatRepository {
             // Initialize Download State
             final file = await File(tempPath).open(mode: FileMode.write);
             _activeDownloads[fileId] = file;
-            _downloadReceivedBytes[fileId] = 0;
-            _downloadTotalBytes[fileId] = fileSize ?? 0;
+            _downloadReceivedChunks[fileId] = <int>{};
+            _downloadTotalChunks[fileId] = chunks;
+            _downloadChunkSizes[fileId] = chunkSize;
+            _downloadExpectedHashes[fileId] = fileHash;
             _downloadFileNames[fileId] = fileName;
 
             final message = {
@@ -1077,72 +1232,105 @@ class ChatRepository {
         if (msgType == 'file_chunk') {
           final fileId = messagePayload['fileId'];
           final chunkData = messagePayload['chunkData']; // Base64
-          // We don't use offset from payload for security/simplicity, we append.
-          // Or we can use offset if we want parallel. User asked for "batches", so active re-assembly.
-          // Let's assume append for now.
+          final chunkIndex = messagePayload['chunkIndex'];
 
           if (fileId != null &&
               chunkData != null &&
+              chunkIndex != null &&
               _activeDownloads.containsKey(fileId)) {
             try {
-              final bytes = base64Decode(chunkData);
-              final raf = _activeDownloads[fileId]!;
-              await raf.writeFrom(bytes);
+              final totalChunks = _downloadTotalChunks[fileId] ?? 1;
 
-              // Update Progress
-              _downloadReceivedBytes[fileId] =
-                  (_downloadReceivedBytes[fileId] ?? 0) + bytes.length;
-              final received = _downloadReceivedBytes[fileId]!;
-              final total = _downloadTotalBytes[fileId] ?? 1;
-              final progress = received / total;
+              if (chunkIndex >= 0 && chunkIndex < totalChunks) {
+                final bytes = base64Decode(chunkData);
+                final raf = _activeDownloads[fileId]!;
+                final chunkSize = _downloadChunkSizes[fileId] ?? (512 * 1024);
+                final offset = chunkIndex * chunkSize;
 
-              // Update UI Message (Throttled? Maybe every 10% or just every chunk if chunks are large)
-              // Updating every chunk ensures smooth bar.
-              // We need the original messageId.
-              // Wait, 'file_chunk' has its own messageId.
-              // We need to know the PARENT messageId.
-              // Usually parent ID == fileId (if we design it that way).
-              // Yes, let's assume fileId == messageId of the header.
+                await raf.setPosition(offset);
+                await raf.writeFrom(bytes);
 
-              final updatedFields = {
-                'transferProgress': progress,
-                'status': 'receiving',
-              };
+                // Track chunk
+                _downloadReceivedChunks[fileId]?.add(chunkIndex);
 
-              await _local.updateMessage(
-                currentUser.uid,
-                roomId,
-                fileId,
-                updatedFields,
-              );
+                // Update Progress
+                final received = _downloadReceivedChunks[fileId]?.length ?? 0;
+                final progress = received / totalChunks;
 
-              // Check Completion
-              if (received >= total) {
-                debugPrint('DEBUG: File download complete for $fileId');
-                await raf.close();
-                _activeDownloads.remove(fileId);
+                final updatedFields = {
+                  'transferProgress': progress,
+                  'status': 'receiving',
+                };
 
-                // Rename to final
-                final dir = await getApplicationDocumentsDirectory();
-                final tempFile = File('${dir.path}/${fileId}_temp');
-                final finalName =
-                    '${DateTime.now().millisecondsSinceEpoch}_${_downloadFileNames[fileId]}';
-                final finalPath = '${dir.path}/$finalName';
+                await _local.updateMessage(
+                  currentUser.uid,
+                  roomId,
+                  fileId,
+                  updatedFields,
+                );
 
-                await tempFile.rename(finalPath);
+                // Check Completion
+                if (received == totalChunks) {
+                  debugPrint(
+                    'DEBUG: File download chunks complete for $fileId',
+                  );
+                  await raf.flush();
+                  await raf.close();
+                  _activeDownloads.remove(fileId);
 
-                // Finalize Message
-                await _local.updateMessage(currentUser.uid, roomId, fileId, {
-                  'transferProgress': 1.0,
-                  'status':
-                      'sent', // Or 'read'/'delivered' effectively available
-                  'fileUrl': finalPath, // Local path
-                });
+                  // Hash Verification
+                  final dir = await getApplicationDocumentsDirectory();
+                  final tempFile = File('${dir.path}/${fileId}_temp');
 
-                // Clean up maps
-                _downloadReceivedBytes.remove(fileId);
-                _downloadTotalBytes.remove(fileId);
-                _downloadFileNames.remove(fileId);
+                  final expectedHash = _downloadExpectedHashes[fileId] ?? '';
+                  String actualHash = '';
+                  if (expectedHash.isNotEmpty) {
+                    final digest = await sha256.bind(tempFile.openRead()).first;
+                    actualHash = digest.toString();
+                  }
+
+                  if (expectedHash.isNotEmpty && actualHash != expectedHash) {
+                    debugPrint(
+                      'SECURITY ALERT: Checksum mismatch for $fileId. Expected: $expectedHash, Actual: $actualHash. Dropping.',
+                    );
+                    await tempFile.delete();
+                    await _local.updateMessage(
+                      currentUser.uid,
+                      roomId,
+                      fileId,
+                      {'status': 'failed_checksum'},
+                    );
+                  } else {
+                    debugPrint(
+                      'DEBUG: File checksum verified successfully for $fileId',
+                    );
+                    // Rename to final
+                    final finalName =
+                        '${DateTime.now().millisecondsSinceEpoch}_${_downloadFileNames[fileId]}';
+                    final finalPath = '${dir.path}/$finalName';
+
+                    await tempFile.rename(finalPath);
+
+                    // Finalize Message
+                    await _local.updateMessage(currentUser.uid, roomId, fileId, {
+                      'transferProgress': 1.0,
+                      'status':
+                          'sent', // Or 'read'/'delivered' effectively available
+                      'fileUrl': finalPath, // Local path
+                    });
+                  }
+
+                  // Clean up maps
+                  _downloadReceivedChunks.remove(fileId);
+                  _downloadTotalChunks.remove(fileId);
+                  _downloadChunkSizes.remove(fileId);
+                  _downloadExpectedHashes.remove(fileId);
+                  _downloadFileNames.remove(fileId);
+                }
+              } else {
+                debugPrint(
+                  'DEBUG: Out of bounds chunkIndex $chunkIndex for $fileId',
+                );
               }
             } catch (e) {
               debugPrint('Error writing chunk: $e');
@@ -1226,7 +1414,8 @@ class ChatRepository {
         String previewText = text;
         if (msgType == 'image') previewText = 'ًں“· طµظˆط±ط©';
         if (msgType == 'audio') previewText = 'ًںژ¤ ط±ط³ط§ظ„ط© طµظˆطھظٹط©';
-        if (msgType == 'file') previewText = 'ًں“پ ظ…ظ„ظپ: ${fileName ?? "ظ…ط³طھظ†ط¯"}';
+        if (msgType == 'file')
+          previewText = 'ًں“پ ظ…ظ„ظپ: ${fileName ?? "ظ…ط³طھظ†ط¯"}';
 
         // Update Conversation List (Unread + Last Message)
         await _updateLocalConversation(
@@ -1528,17 +1717,40 @@ class ChatRepository {
     final room = _local.getConversation(myId, roomId);
     if (room == null) return false;
 
+    return _hasGroupPermission(myId, room);
+  }
+
+  bool _hasGroupPermission(
+    String userId,
+    Map<String, dynamic> room, {
+    String? requiredPerm,
+  }) {
     // Check if creator (legacy or current)
-    final bool isCreator = room['createdBy'] == myId;
+    final bool isCreator = room['createdBy'] == userId;
     final bool isLegacyCreator =
-        room['id'].endsWith('_$myId') && room['createdBy'] == null;
+        room['id'] != null &&
+        room['id'].toString().endsWith('_$userId') &&
+        room['createdBy'] == null;
     final bool isOwner = isCreator || isLegacyCreator;
 
     if (isOwner) return true;
 
     // Check admin list
     final admins = List<String>.from(room['admins'] ?? []);
-    return admins.contains(myId);
+    if (!admins.contains(userId)) return false;
+
+    // If no specific permission requested, being an admin is enough
+    if (requiredPerm == null) return true;
+
+    // Check specific permission
+    final permissionsMap =
+        (room['adminPermissions'] as Map?)?.map(
+          (key, value) =>
+              MapEntry(key.toString(), List<String>.from(value ?? [])),
+        ) ??
+        {};
+    final userPerms = permissionsMap[userId] ?? [];
+    return userPerms.contains(requiredPerm);
   }
 
   // ---------------------------------------------------------------------------
@@ -1842,6 +2054,10 @@ class ChatRepository {
       'DEBUG: Sending $originalType $fileName in $totalChunks chunks (Size: $fileSize)',
     );
 
+    // Compute SHA-256 of the whole file before chunking
+    final digest = await sha256.bind(file.openRead()).first;
+    final fileHash = digest.toString();
+
     // 1. Send Header
     await _sendEncryptedContent(
       roomId,
@@ -1856,6 +2072,8 @@ class ChatRepository {
         'fileName': fileName,
         'fileSize': fileSize,
         'chunks': totalChunks,
+        'chunkSize': chunkSize,
+        'fileHash': fileHash,
         'fileType': originalType,
       },
     );
@@ -2038,7 +2256,9 @@ class ChatRepository {
       (updatedData['unreadCounts'] as Map?)?.map(
             (key, value) => MapEntry(
               key.toString(),
-              value is num ? value.toInt() : int.tryParse(value.toString()) ?? 0,
+              value is num
+                  ? value.toInt()
+                  : int.tryParse(value.toString()) ?? 0,
             ),
           ) ??
           {},
@@ -2048,7 +2268,8 @@ class ChatRepository {
       updatedData['participants'] ??
           (roomId.startsWith('group_') ? const <String>[] : roomId.split('_')),
     );
-    final isGroup = updatedData['isGroup'] == true || roomId.startsWith('group_');
+    final isGroup =
+        updatedData['isGroup'] == true || roomId.startsWith('group_');
 
     if (incrementUnread) {
       unreadCounts[myId] = (unreadCounts[myId] ?? 0) + 1;
@@ -2941,9 +3162,12 @@ class ChatRepository {
 
     // 1. Validate format
     final cleanHandle = handle.toLowerCase().trim();
-    if (cleanHandle.isEmpty) throw Exception('ط§ظ„ظ…ط¹ط±ظپ ظ„ط§ ظٹظ…ظƒظ† ط£ظ† ظٹظƒظˆظ† ظپط§ط±ط؛ط§ظ‹');
+    if (cleanHandle.isEmpty)
+      throw Exception('ط§ظ„ظ…ط¹ط±ظپ ظ„ط§ ظٹظ…ظƒظ† ط£ظ† ظٹظƒظˆظ† ظپط§ط±ط؛ط§ظ‹');
     if (!RegExp(r'^[a-z0-9_]{3,20}$').hasMatch(cleanHandle)) {
-      throw Exception('ط§ظ„ظ…ط¹ط±ظپ ظٹط¬ط¨ ط£ظ† ظٹظƒظˆظ† ط£ط­ط±ظپ ط¥ظ†ط¬ظ„ظٹط²ظٹط© ظˆط£ط±ظ‚ط§ظ… ظˆط¨ط·ظˆظ„ 3-20');
+      throw Exception(
+        'ط§ظ„ظ…ط¹ط±ظپ ظٹط¬ط¨ ط£ظ† ظٹظƒظˆظ† ط£ط­ط±ظپ ط¥ظ†ط¬ظ„ظٹط²ظٹط© ظˆط£ط±ظ‚ط§ظ… ظˆط¨ط·ظˆظ„ 3-20',
+      );
     }
 
     // 2. Check Uniqueness (Firestore Transaction)
@@ -2957,7 +3181,9 @@ class ChatRepository {
       await _firestore.runTransaction((transaction) async {
         final handleDoc = await transaction.get(handleRef);
         if (handleDoc.exists && handleDoc.data()?['roomId'] != roomId) {
-          throw Exception('ظ‡ط°ط§ ط§ظ„ظ…ط¹ط±ظپ ظ…ط³طھط®ط¯ظ… ط¨ط§ظ„ظپط¹ظ„ ظ„ظ…ط¬ظ…ظˆط¹ط© ط£ط®ط±ظ‰');
+          throw Exception(
+            'ظ‡ط°ط§ ط§ظ„ظ…ط¹ط±ظپ ظ…ط³طھط®ط¯ظ… ط¨ط§ظ„ظپط¹ظ„ ظ„ظ…ط¬ظ…ظˆط¹ط© ط£ط®ط±ظ‰',
+          );
         }
 
         // Check current handle to cleanup old one if changing
@@ -2976,7 +3202,9 @@ class ChatRepository {
               'createdAt': FieldValue.serverTimestamp(),
             });
           } else {
-            throw Exception('ط¨ظٹط§ظ†ط§طھ ط§ظ„ظ…ط¬ظ…ظˆط¹ط© ط؛ظٹط± ظ…ظˆط¬ظˆط¯ط© (Meta-data missing)');
+            throw Exception(
+              'ط¨ظٹط§ظ†ط§طھ ط§ظ„ظ…ط¬ظ…ظˆط¹ط© ط؛ظٹط± ظ…ظˆط¬ظˆط¯ط© (Meta-data missing)',
+            );
           }
         } else {
           final oldHandle = roomDoc.data()?['groupHandle'];
@@ -2998,7 +3226,9 @@ class ChatRepository {
     } catch (e) {
       debugPrint('Handle Error: $e');
       if (e.toString().contains('permission-denied')) {
-        throw Exception('ظ„ط§ طھظ…ظ„ظƒ طµظ„ط§ط­ظٹط© ظ„طھط¹ط¯ظٹظ„ ط§ظ„ظ…ط¹ط±ظپ (Permission Denied)');
+        throw Exception(
+          'ظ„ط§ طھظ…ظ„ظƒ طµظ„ط§ط­ظٹط© ظ„طھط¹ط¯ظٹظ„ ط§ظ„ظ…ط¹ط±ظپ (Permission Denied)',
+        );
       }
       rethrow;
     }
@@ -3677,7 +3907,9 @@ class ChatRepository {
         debugPrint('DEBUG: Group is private, would need to send join request');
         // For now, just throw an error
         // In the future, implement join request system
-        throw Exception('ط§ظ„ظ…ط¬ظ…ظˆط¹ط© ط®ط§طµط© - ظٹط¬ط¨ ط¥ط±ط³ط§ظ„ ط·ظ„ط¨ ط§ظ†ط¶ظ…ط§ظ…');
+        throw Exception(
+          'ط§ظ„ظ…ط¬ظ…ظˆط¹ط© ط®ط§طµط© - ظٹط¬ط¨ ط¥ط±ط³ط§ظ„ ط·ظ„ط¨ ط§ظ†ط¶ظ…ط§ظ…',
+        );
       }
 
       debugPrint('DEBUG: Successfully joined group @$handle');
@@ -4794,4 +5026,3 @@ String? _signPayload(String payload, String privateKeyPem) {
   }
   return null;
 }
-

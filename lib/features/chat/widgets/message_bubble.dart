@@ -126,11 +126,11 @@ class MessageBubble extends ConsumerWidget {
 
                                 // Content
                                 if (message.type == 'image')
-                                  _buildImage(context)
+                                  _buildImage(context, ref)
                                 else if (message.type == 'audio')
                                   _buildAudio(context)
                                 else if (message.type == 'file')
-                                  _buildFile(context)
+                                  _buildFile(context, ref)
                                 else
                                   _buildText(context),
 
@@ -331,8 +331,7 @@ class MessageBubble extends ConsumerWidget {
     );
   }
 
-  Widget _buildImage(BuildContext context) {
-    // DEBUG: Log imageUrl when building image widget
+  Widget _buildImage(BuildContext context, WidgetRef ref) {
     if (message.imageUrl != null) {
       print(
         'DEBUG: _buildImage - messageId=${message.id}, imageUrl=${message.imageUrl}',
@@ -341,15 +340,85 @@ class MessageBubble extends ConsumerWidget {
       print('DEBUG: _buildImage - messageId=${message.id}, imageUrl is NULL!');
     }
 
+    final isTransferring = message.status == MessageStatus.sending || 
+                           message.status == MessageStatus.receiving;
+
     return GestureDetector(
       onTap: () => onImageTap?.call(message.imageUrl ?? ''),
       child: Hero(
         tag: message.imageUrl ?? message.id,
         child: ClipRRect(
           borderRadius: BorderRadius.circular(14),
-          child: _getImageWidget(context, message.imageUrl),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              _getImageWidget(context, message.imageUrl),
+              if (isTransferring) _buildUploadOverlay(context, ref),
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _buildUploadOverlay(BuildContext context, WidgetRef ref) {
+    final uploadStateAsync = ref.watch(uploadProgressProvider(message.id));
+
+    return uploadStateAsync.when(
+      data: (progress) {
+        final pct = (progress.progress * 100).toInt();
+        final isCancelled = progress.status.name == 'cancelled';
+        final isFailed = progress.status.name == 'failed';
+        final isCompressing = progress.status.name == 'compressing';
+        
+        if (progress.status.name == 'sent') return const SizedBox.shrink();
+
+        return Container(
+          color: Colors.black.withValues(alpha: 0.5),
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (isCancelled || isFailed)
+                  const Icon(Icons.error_outline, color: Colors.white, size: 40)
+                else
+                  Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      CircularProgressIndicator(
+                        value: progress.progress > 0 ? progress.progress : null,
+                        color: Colors.white,
+                      ),
+                      if (isCompressing)
+                        const Icon(Icons.compress, color: Colors.white, size: 20)
+                      else
+                        IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white, size: 20),
+                          onPressed: () {
+                            ref.read(chatRepositoryProvider).cancelUpload(message.id);
+                          },
+                        ),
+                    ],
+                  ),
+                const SizedBox(height: 8),
+                Text(
+                  isCancelled ? 'Cancelled' : 
+                  isFailed ? 'Failed' : 
+                  isCompressing ? 'Compressing...' : '$pct%',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ).animate().fadeIn(duration: 200.ms),
+          ),
+        );
+      },
+      loading: () => Container(
+        color: Colors.black.withValues(alpha: 0.5),
+        child: const Center(
+          child: CircularProgressIndicator(color: Colors.white),
+        ),
+      ),
+      error: (_, __) => const SizedBox.shrink(),
     );
   }
 
@@ -751,15 +820,12 @@ class MessageBubble extends ConsumerWidget {
     return "${d.inMinutes}:$twoDigitSeconds";
   }
 
-  Widget _buildFile(BuildContext context) {
+  Widget _buildFile(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    // Progress logic
-    final isTransferring =
-        message.status == MessageStatus.sending ||
-        message.status == MessageStatus.receiving;
-    final progress = message.transferProgress ?? 0.0;
+    final isTransferring = message.status == MessageStatus.sending ||
+                           message.status == MessageStatus.receiving;
 
     return Container(
       constraints: const BoxConstraints(maxWidth: 280),
@@ -824,35 +890,78 @@ class MessageBubble extends ConsumerWidget {
           ),
           if (isTransferring) ...[
             const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: progress > 0 ? progress : null, // Null for indeterminate
-                backgroundColor: theme.colorScheme.surface.withOpacity(0.3),
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  isMe
-                      ? theme.colorScheme.onPrimary
-                      : theme.colorScheme.primary,
-                ),
-                minHeight: 4,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  message.status == MessageStatus.sending
-                      ? 'جاري الإرسال...'
-                      : 'جاري التحميل...',
-                  style: const TextStyle(fontSize: 10),
-                ),
-                if (progress > 0)
-                  Text(
-                    '${(progress * 100).toInt()}%',
-                    style: const TextStyle(fontSize: 10),
+            Consumer(
+              builder: (context, ref, child) {
+                final uploadStateAsync = ref.watch(uploadProgressProvider(message.id));
+                return uploadStateAsync.when(
+                  data: (progress) {
+                    final pct = (progress.progress * 100).toInt();
+                    final speedKB = progress.speed / 1024;
+                    final isCancelled = progress.status.name == 'cancelled';
+                    final isFailed = progress.status.name == 'failed';
+                    
+                    if (progress.status.name == 'sent') return const SizedBox.shrink();
+                    
+                    return Column(
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: LinearProgressIndicator(
+                                  value: isCancelled || isFailed ? 0 : (progress.progress > 0 ? progress.progress : null),
+                                  backgroundColor: theme.colorScheme.surface.withOpacity(0.3),
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    isCancelled || isFailed ? Colors.red :
+                                    (isMe ? theme.colorScheme.onPrimary : theme.colorScheme.primary),
+                                  ),
+                                  minHeight: 4,
+                                ),
+                              ),
+                            ),
+                            if (!isCancelled && !isFailed)
+                              IconButton(
+                                icon: Icon(Icons.close, size: 16, color: isMe ? theme.colorScheme.onPrimary : theme.colorScheme.primary),
+                                onPressed: () {
+                                  ref.read(chatRepositoryProvider).cancelUpload(message.id);
+                                },
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              isCancelled ? 'Cancelled' :
+                              isFailed ? 'Failed' :
+                              message.status == MessageStatus.sending
+                                  ? 'جاري الإرسال... (${speedKB.toStringAsFixed(1)} KB/s)'
+                                  : 'جاري التحميل... (${speedKB.toStringAsFixed(1)} KB/s)',
+                              style: TextStyle(fontSize: 10, color: isCancelled || isFailed ? Colors.red : null),
+                            ),
+                            if (!isCancelled && !isFailed && progress.progress > 0)
+                              Text(
+                                '$pct%',
+                                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                              ),
+                          ],
+                        ),
+                      ],
+                    );
+                  },
+                  loading: () => LinearProgressIndicator(
+                    backgroundColor: theme.colorScheme.surface.withOpacity(0.3),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      isMe ? theme.colorScheme.onPrimary : theme.colorScheme.primary,
+                    ),
                   ),
-              ],
+                  error: (_, __) => const Text('Error', style: TextStyle(color: Colors.red)),
+                );
+              },
             ),
           ],
         ],

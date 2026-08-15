@@ -12,8 +12,8 @@ import '../../chat/models/user_model.dart';
 import '../../chat/repositories/chat_repository.dart';
 import '../../../core/widgets/shimmer_loaders.dart';
 import '../../settings/screens/settings_screen.dart';
-import '../../contacts/screens/contacts_screen.dart'; // Added
-// Removed unused imports
+import '../../contacts/screens/contacts_screen.dart';
+import '../../../core/security/crypto_service.dart'; // Added
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -132,15 +132,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   // --- Privacy Updates Removed (Migrated to PrivacySettingsScreen) ---
 
-  String _getIdentityFingerprint(String uid) {
-    // Generate a visual "Safety Number" from UID
-    var bytes = utf8.encode(uid);
+  String _getIdentityFingerprint(String? publicKey) {
+    if (publicKey == null || publicKey.trim().isEmpty) return 'غير متاح (لا يوجد مفتاح)';
+    final canonicalKey = publicKey.replaceAll(RegExp(r'\s+'), '');
+    var bytes = utf8.encode(canonicalKey);
     var digest = sha256.convert(bytes);
-    var hex = digest.toString().toUpperCase().substring(
-      0,
-      16,
-    ); // First 16 chars
-    // Format as XXXX-XXXX-XXXX-XXXX
+    var hex = digest.toString().toUpperCase().substring(0, 16);
     return '${hex.substring(0, 4)}-${hex.substring(4, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}';
   }
 
@@ -375,7 +372,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
                       // --- Identity & Security Section ---
                       _buildSectionHeader('الهوية والأمان'),
-                      _buildIdentityCard(theme, _currentUser!.uid),
+                      _buildIdentityCard(theme),
 
                       const SizedBox(height: 24),
 
@@ -523,81 +520,92 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  Widget _buildIdentityCard(ThemeData theme, String uid) {
-    final fingerprint = _getIdentityFingerprint(uid);
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Theme.of(context).dividerColor),
-        boxShadow: [
-          BoxShadow(
-            color: Theme.of(context).colorScheme.surfaceVariant,
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Icon(Icons.fingerprint, color: Theme.of(context).iconTheme.color),
-              SizedBox(width: 8),
-              Text(
-                'البصمة التعريفية',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              Spacer(),
-              Icon(
-                Icons.shield_outlined,
-                color: Theme.of(context).iconTheme.color,
-                size: 18,
+  Widget _buildIdentityCard(ThemeData theme) {
+    return FutureBuilder<String?>(
+      future: CryptoService().getPrivateKeyPem().then((_) => CryptoService().getPublicKeyPem()), // Ensures service is initialized
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        
+        final publicKey = snapshot.data;
+        final fingerprint = _getIdentityFingerprint(publicKey);
+
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Theme.of(context).dividerColor),
+            boxShadow: [
+              BoxShadow(
+                color: Theme.of(context).colorScheme.surfaceVariant,
+                blurRadius: 10,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: theme.scaffoldBackgroundColor,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              fingerprint,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontFamily: 'Courier', // Monospace for keys
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.5,
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          child: Column(
             children: [
-              OutlinedButton.icon(
-                onPressed: () {
-                  Clipboard.setData(ClipboardData(text: fingerprint));
-                  HapticFeedback.lightImpact(); // Feedback
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('تم نسخ البصمة التعريفية')),
-                  );
-                },
-                icon: const Icon(Icons.copy, size: 16),
-                label: const Text('نسخ'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+              Row(
+                children: [
+                  Icon(Icons.fingerprint, color: Theme.of(context).iconTheme.color),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'البصمة التعريفية',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const Spacer(),
+                  Icon(
+                    Icons.shield_outlined,
+                    color: Theme.of(context).iconTheme.color,
+                    size: 18,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.scaffoldBackgroundColor,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  fingerprint,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontFamily: 'Courier', // Monospace for keys
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.5,
+                  ),
                 ),
               ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: fingerprint));
+                      HapticFeedback.lightImpact(); // Feedback
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('تم نسخ البصمة التعريفية')),
+                      );
+                    },
+                    icon: const Icon(Icons.copy, size: 16),
+                    label: const Text('نسخ'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
-        ],
-      ),
-    ).animate().fadeIn(delay: 250.ms).slideY(begin: 0.2, end: 0);
+        ).animate().fadeIn(delay: 250.ms).slideY(begin: 0.2, end: 0);
+      },
+    );
   }
 
   Future<void> _showEditDialog(

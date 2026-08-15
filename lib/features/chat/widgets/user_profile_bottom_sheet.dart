@@ -268,11 +268,7 @@ class UserProfileBottomSheet extends ConsumerWidget {
                                             ),
                                           ),
                                           child: Text(
-                                            _getIdentityFingerprint(
-                                              publicKey ?? userId,
-                                              isInsecureFallback:
-                                                  publicKey == null,
-                                            ),
+                                            _getIdentityFingerprint(publicKey),
                                             style: TextStyle(
                                               fontFamily: 'monospace',
                                               fontSize: 11,
@@ -289,12 +285,7 @@ class UserProfileBottomSheet extends ConsumerWidget {
                                     color: Colors.transparent,
                                     child: InkWell(
                                       onTap: () {
-                                        final fingerprint =
-                                            _getIdentityFingerprint(
-                                              publicKey ?? userId,
-                                              isInsecureFallback:
-                                                  publicKey == null,
-                                            );
+                                        final fingerprint = _getIdentityFingerprint(publicKey);
                                         Clipboard.setData(
                                           ClipboardData(text: fingerprint),
                                         );
@@ -744,18 +735,15 @@ class UserProfileBottomSheet extends ConsumerWidget {
     }
   }
 
-  String _getIdentityFingerprint(
-    String input, {
-    bool isInsecureFallback = false,
-  }) {
-    // إذا كنا نستخدم الـ UID (لعدم توفر المفتاح العام)، نضيف علامة مميزة
-    // ليعرف المستخدم أن هذا التحقق ليس آمناً 100%
-    String dataToHash = input;
-    if (isInsecureFallback) {
-      dataToHash = "INSECURE_UID:$input";
+  String _getIdentityFingerprint(String? publicKey) {
+    if (publicKey == null || publicKey.trim().isEmpty) {
+      return 'غير متاح (لا يوجد مفتاح)';
     }
 
-    var bytes = utf8.encode(dataToHash);
+    // Canonicalization: Remove all whitespaces and newlines
+    final canonicalKey = publicKey.replaceAll(RegExp(r'\s+'), '');
+
+    var bytes = utf8.encode(canonicalKey);
     var digest = sha256.convert(bytes);
     var hex = digest.toString().toUpperCase().substring(0, 16);
     return '${hex.substring(0, 4)}-${hex.substring(4, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}';

@@ -101,6 +101,64 @@ class LocalStorageService {
   Future<void> openUserBox(String userId) async {
     await _openSecureBox('conversations_$userId');
     await _openSecureBox('settings_$userId'); // Open settings box
+    
+    // Open deduplication box and run cleanup
+    await _openSecureBox('processed_message_hashes_$userId');
+    _cleanupProcessedHashes(userId); // Run async without blocking
+  }
+
+  // --- Replay Protection (Deduplication) ---
+  Future<bool> isMessageHashProcessed(String userId, String hash, {Duration window = const Duration(minutes: 5)}) async {
+    final boxName = 'processed_message_hashes_$userId';
+    var box = await _openSecureBox(boxName);
+    if (!box.isOpen) box = await _openSecureBox(boxName);
+
+    if (box.isOpen) {
+      final timestamp = box.get(hash);
+      if (timestamp != null) {
+        final time = DateTime.fromMillisecondsSinceEpoch(timestamp as int);
+        if (DateTime.now().difference(time) <= window) {
+          return true; // Recently processed, reject
+        }
+      }
+    }
+    return false;
+  }
+
+  Future<void> markMessageHashProcessed(String userId, String hash) async {
+    final boxName = 'processed_message_hashes_$userId';
+    var box = await _openSecureBox(boxName);
+    if (!box.isOpen) box = await _openSecureBox(boxName);
+
+    if (box.isOpen) {
+      await box.put(hash, DateTime.now().millisecondsSinceEpoch);
+    }
+  }
+
+  Future<void> _cleanupProcessedHashes(String userId, {Duration maxAge = const Duration(hours: 48)}) async {
+    final boxName = 'processed_message_hashes_$userId';
+    try {
+      if (!Hive.isBoxOpen(boxName)) return;
+      final box = Hive.box(boxName);
+
+      final now = DateTime.now();
+      final keysToDelete = [];
+      for (final key in box.keys) {
+        final timestamp = box.get(key);
+        if (timestamp != null) {
+          final time = DateTime.fromMillisecondsSinceEpoch(timestamp as int);
+          if (now.difference(time) > maxAge) {
+            keysToDelete.add(key);
+          }
+        }
+      }
+      if (keysToDelete.isNotEmpty) {
+        await box.deleteAll(keysToDelete);
+        print('DEBUG: Cleaned up ${keysToDelete.length} old processed hashes.');
+      }
+    } catch (e) {
+      print('DEBUG: Error cleaning up hashes: $e');
+    }
   }
 
   // --- Settings ---
