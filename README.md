@@ -779,7 +779,7 @@ AbbasChat has not been independently audited by a professional security firm at 
 
 ---
 
-<div align="center">🔐 AbbasChat
+<div align="center">🔐 Nisaba
 
 Private communication. Built with security in mind.
 
