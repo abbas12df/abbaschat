@@ -65,10 +65,11 @@ final userProfileProvider = StreamProvider.family<UserModel?, String>((
 final activeChatRoomIdProvider = StateProvider<String?>((ref) => null);
 
 // Provider for upload progress UI tracking
-final uploadProgressProvider = StreamProvider.family.autoDispose<UploadProgress, String>((ref, messageId) {
-  final repo = ref.watch(chatRepositoryProvider);
-  return repo.uploadProgressStream.where((p) => p.fileId == messageId);
-});
+final uploadProgressProvider = StreamProvider.family
+    .autoDispose<UploadProgress, String>((ref, messageId) {
+      final repo = ref.watch(chatRepositoryProvider);
+      return repo.uploadProgressStream.where((p) => p.fileId == messageId);
+    });
 
 class ChatRepository {
   final Map<String, Map<String, dynamic>> _pendingSegments = {};
@@ -92,6 +93,15 @@ class ChatRepository {
   final Map<String, int> _downloadChunkSizes = {};
   final Map<String, String> _downloadExpectedHashes = {};
   final Map<String, String> _downloadFileNames = {};
+  final Map<String, Future<void>> _downloadLocks = {}; // Mutex for concurrency
+
+  // Security Limits
+  static const int _maxFileSize = 500 * 1024 * 1024; // 500MB
+  static const int _maxChunkSize = 2 * 1024 * 1024; // 2MB
+  static const int _maxChunks = 10000;
+
+  // Replay Protection (In-flight messages)
+  final Set<String> _processingMessageHashes = {};
 
   // Upload Tracking
   final Map<String, UploadProgress> _activeUploads = {};
@@ -108,6 +118,29 @@ class ChatRepository {
       );
       _uploadProgressController.add(_activeUploads[fileId]!);
     }
+  }
+
+  Future<void> cancelDownload(String fileId) async {
+    final raf = _activeDownloads.remove(fileId);
+    if (raf != null) {
+      try {
+        await raf.close();
+      } catch (_) {}
+    }
+    _downloadReceivedChunks.remove(fileId);
+    _downloadTotalChunks.remove(fileId);
+    _downloadChunkSizes.remove(fileId);
+    _downloadExpectedHashes.remove(fileId);
+    _downloadFileNames.remove(fileId);
+    _downloadLocks.remove(fileId);
+
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final tempFile = File('${dir.path}/${fileId}_temp');
+      if (await tempFile.exists()) {
+        await tempFile.delete();
+      }
+    } catch (_) {}
   }
 
   // P2P Sync Status Broadcast
@@ -408,6 +441,8 @@ class ChatRepository {
         data['payload'],
       );
 
+      String? currentHash;
+
       try {
         // 1. Decrypt
         final myPrivateKey = await CryptoService().getPrivateKeyPem();
@@ -465,11 +500,18 @@ class ChatRepository {
           final ciphertext = encryptedBundle['ciphertext'] as String?;
           if (ciphertext != null) {
             final hashBytes = sha256.convert(utf8.encode(ciphertext));
-            final hash = hashBytes.toString();
+            currentHash = hashBytes.toString();
+
+            if (_processingMessageHashes.contains(currentHash)) {
+              debugPrint(
+                'SECURITY ALERT: Message hash is already in flight. Dropping message $messageId.',
+              );
+              return;
+            }
 
             final isDuplicate = await _local.isMessageHashProcessed(
               currentUser.uid,
-              hash,
+              currentHash!,
             );
             if (isDuplicate) {
               debugPrint(
@@ -480,8 +522,8 @@ class ChatRepository {
               return;
             }
 
-            // Mark as processed immediately to prevent parallel replays
-            await _local.markMessageHashProcessed(currentUser.uid, hash);
+            // Mark as in-flight
+            _processingMessageHashes.add(currentHash!);
           }
           // ---------------------------------------------------
         } catch (e) {
@@ -650,72 +692,148 @@ class ChatRepository {
           debugPrint('DEBUG: Received GROUP_CREATE command for $roomId');
 
           final groupPayload = messagePayload;
-          final groupRoom = ChatRoom(
-            id: groupPayload['id'],
-            participants: List<String>.from(groupPayload['participants'] ?? []),
-            lastMessage: 'طھظ…طھ ط¯ط¹ظˆطھظƒ ظ„ظ„ظ…ط¬ظ…ظˆط¹ط©',
-            lastMessageTime: DateTime.now(),
-            unreadCounts: {currentUser.uid: 1}, // Mark as unread so they notice
-            isGroup: true,
-            groupName: _readFieldText(groupPayload, const [
-              'groupName',
-              'name',
-              'title',
-            ]),
-            groupIcon: _readFieldText(groupPayload, const [
-              'groupIcon',
-              'icon',
-              'imageUrl',
-            ]),
-            description: _readFieldText(groupPayload, const [
-              'description',
-              'desc',
-            ]),
-            admins: groupPayload['admins'] != null
-                ? List<String>.from(groupPayload['admins'])
-                : [],
-            deletedBy: [],
-            isPublic: groupPayload['isPublic'] ?? false,
-            onlyAdminsCanPost: groupPayload['onlyAdminsCanPost'] ?? false,
-            groupHandle: _readFieldText(groupPayload, const [
-              'groupHandle',
-              'handle',
-            ]),
-            createdBy: _readFieldText(groupPayload, const [
-              'createdBy',
-              'ownerId',
-            ]),
-            category: _readFieldText(groupPayload, const [
-              'category',
-              'groupCategory',
-              'channelCategory',
-              'categoryName',
-              'category_name',
-              'section',
-              'sectionName',
-              'section_name',
-            ]),
-            source: _readFieldText(groupPayload, const [
-              'source',
-              'sourceName',
-              'source_name',
-              'provider',
-              'providerName',
-              'provider_name',
-              'playlist',
-            ]),
-          );
-
-          await _local.updateConversation(
+          final existingGroup = _local.getConversation(
             currentUser.uid,
             groupPayload['id'],
-            groupRoom.toMap(),
           );
 
-          // Send ACK
-          await _relay.sendAck(senderId: senderId, messageId: messageId);
-          await _relay.deleteFromRelay(messageId);
-          return;
+          if (existingGroup != null) {
+            debugPrint(
+              'SECURITY ALERT: GROUP_CREATE received for an existing group. Dropping to prevent hijack/overwrite.',
+            );
+            await _relay.sendAck(senderId: senderId, messageId: messageId);
+            await _relay.deleteFromRelay(messageId);
+            return;
+          }
+
+          final groupId = groupPayload['id'];
+          if (groupId == null) return;
+
+          try {
+            final groupDoc = await _firestore
+                .collection('group_chats')
+                .doc(groupId)
+                .get();
+            if (!groupDoc.exists) {
+              debugPrint(
+                'SECURITY ALERT: Received group_create for non-existent Firestore group $groupId. Dropping.',
+              );
+              return; // Do NOT ACK. Let it retry later if Firestore is lagging.
+            }
+
+            final data = groupDoc.data()!;
+            final realAdmins = List<String>.from(data['admins'] ?? []);
+            final realParticipants = List<String>.from(
+              data['participants'] ?? [],
+            );
+
+            if (!realAdmins.contains(senderId)) {
+              debugPrint(
+                'SECURITY ALERT: Sender $senderId is not an admin in Firestore. Forged invite!',
+              );
+              await _relay.sendAck(senderId: senderId, messageId: messageId);
+              await _relay.deleteFromRelay(messageId);
+              return;
+            }
+
+            if (!realParticipants.contains(currentUser.uid)) {
+              debugPrint(
+                'SECURITY ALERT: I am not in the real participants list in Firestore. Forged invite!',
+              );
+              await _relay.sendAck(senderId: senderId, messageId: messageId);
+              await _relay.deleteFromRelay(messageId);
+              return;
+            }
+
+            Map<String, List<String>>? parsedPerms;
+            if (data['adminPermissions'] != null) {
+              parsedPerms = {};
+              final rawPerms = data['adminPermissions'] as Map;
+              for (final entry in rawPerms.entries) {
+                parsedPerms[entry.key.toString()] = List<String>.from(
+                  entry.value,
+                );
+              }
+            }
+
+            // Build local room mixing secure Firestore data and benign Payload metadata
+            final groupRoom = ChatRoom(
+              id: groupId,
+              participants: realParticipants, // FROM FIRESTORE
+              lastMessage: 'تمت دعوتك للمجموعة',
+              lastMessageTime: DateTime.now(),
+              unreadCounts: {
+                currentUser.uid: 1,
+              }, // Mark as unread so they notice
+              isGroup: true,
+              groupName:
+                  data['groupName'] ??
+                  _readFieldText(groupPayload, const [
+                    'groupName',
+                    'name',
+                    'title',
+                  ]),
+              groupIcon:
+                  data['groupIcon'] ??
+                  _readFieldText(groupPayload, const [
+                    'groupIcon',
+                    'icon',
+                    'imageUrl',
+                  ]),
+              description:
+                  data['description'] ??
+                  _readFieldText(groupPayload, const ['description', 'desc']),
+              admins: realAdmins, // FROM FIRESTORE
+              deletedBy: [],
+              isPublic: data['isPublic'] ?? groupPayload['isPublic'] ?? false,
+              onlyAdminsCanPost:
+                  data['onlyAdminsCanPost'] ??
+                  groupPayload['onlyAdminsCanPost'] ??
+                  false,
+              groupHandle:
+                  data['groupHandle'] ??
+                  _readFieldText(groupPayload, const ['groupHandle', 'handle']),
+              createdBy:
+                  data['createdBy'] ??
+                  senderId, // FROM FIRESTORE (or fallback to creator)
+              adminPermissions: parsedPerms, // FROM FIRESTORE
+              category: _readFieldText(groupPayload, const [
+                'category',
+                'groupCategory',
+                'channelCategory',
+                'categoryName',
+                'category_name',
+                'section',
+                'sectionName',
+                'section_name',
+              ]),
+              source: _readFieldText(groupPayload, const [
+                'source',
+                'sourceName',
+                'source_name',
+                'provider',
+                'providerName',
+                'provider_name',
+                'playlist',
+              ]),
+            );
+
+            await _local.updateConversation(
+              currentUser.uid,
+              groupId,
+              groupRoom.toMap(),
+            );
+
+            await _relay.sendAck(senderId: senderId, messageId: messageId);
+            await _relay.deleteFromRelay(messageId);
+            return;
+          } catch (e) {
+            debugPrint(
+              'ERROR: Failed to verify group_create from Firestore: $e',
+            );
+            // Do NOT ACK. Might be a network issue. Let Relay retry later.
+            return;
+          }
         }
         // ----------------------------------------
 
@@ -841,27 +959,38 @@ class ChatRepository {
 
           final room = _local.getConversation(currentUser.uid, roomId);
           if (room != null) {
-            // A user can remove themselves (leave). Otherwise, they need remove_members perm.
-            if (senderId != targetId &&
-                !_hasGroupPermission(
-                  senderId,
-                  room,
-                  requiredPerm: 'remove_members',
-                )) {
-              debugPrint(
-                'SECURITY ALERT: Unauthorized GROUP_MEMBER_REMOVE from $senderId. Dropping.',
-              );
-              await _relay.sendAck(senderId: senderId, messageId: messageId);
-              await _relay.deleteFromRelay(messageId);
-              return;
+            // --- SECURITY: SEPARATE SELF-LEAVE FROM ADMIN REMOVE ---
+            if (senderId == targetId) {
+              // Legitimate self-leave path
+              debugPrint('DEBUG: Self-leave requested by $senderId');
+            } else {
+              // Must be authorized admin
+              if (!_hasGroupPermission(
+                senderId,
+                room,
+                requiredPerm: 'remove_members',
+              )) {
+                debugPrint(
+                  'SECURITY ALERT: Unauthorized GROUP_MEMBER_REMOVE from $senderId. Dropping.',
+                );
+                await _relay.sendAck(senderId: senderId, messageId: messageId);
+                await _relay.deleteFromRelay(messageId);
+                return;
+              }
             }
           }
 
           if (targetId == currentUser.uid) {
             // I was removed (or I left) -> Delete chat
-            debugPrint(
-              'DEBUG: I was removed from group $roomId, deleting conversation',
-            );
+            if (senderId == targetId) {
+              debugPrint(
+                'DEBUG: I left group $roomId voluntarily, deleting conversation',
+              );
+            } else {
+              debugPrint(
+                'DEBUG: I was removed from group $roomId by admin $senderId, deleting conversation',
+              );
+            }
             await _local.deleteConversation(currentUser.uid, roomId);
             debugPrint('DEBUG: Conversation $roomId deleted successfully');
           } else {
@@ -1184,45 +1313,128 @@ class ChatRepository {
           debugPrint('DEBUG: Received FILE_HEADER for $messageId');
           final fileId = messagePayload['fileId'];
           final fileName = messagePayload['fileName'];
-          final fileSize = messagePayload['fileSize'];
-          final chunks = messagePayload['chunks'] ?? 1;
-          final chunkSize = messagePayload['chunkSize'] ?? (512 * 1024);
+          final fileSize = messagePayload['fileSize'] is int
+              ? messagePayload['fileSize'] as int
+              : int.tryParse(messagePayload['fileSize'].toString()) ?? 0;
+          final chunks = messagePayload['chunks'] is int
+              ? messagePayload['chunks'] as int
+              : int.tryParse(messagePayload['chunks'].toString()) ?? 1;
+          final chunkSize = messagePayload['chunkSize'] is int
+              ? messagePayload['chunkSize'] as int
+              : int.tryParse(messagePayload['chunkSize'].toString()) ??
+                    (512 * 1024);
           final fileHash = messagePayload['fileHash'] ?? '';
 
-          if (fileId != null && fileName != null) {
-            // Create Placeholder Message
-            final dir = await getApplicationDocumentsDirectory();
-            final tempPath = '${dir.path}/${fileId}_temp';
-
-            // Initialize Download State
-            final file = await File(tempPath).open(mode: FileMode.write);
-            _activeDownloads[fileId] = file;
-            _downloadReceivedChunks[fileId] = <int>{};
-            _downloadTotalChunks[fileId] = chunks;
-            _downloadChunkSizes[fileId] = chunkSize;
-            _downloadExpectedHashes[fileId] = fileHash;
-            _downloadFileNames[fileId] = fileName;
-
-            final message = {
-              'id': messageId, // Use the header's ID as the main message ID
-              'senderId': senderId,
-              'text': '',
-              'fileUrl': null,
-              'fileName': fileName,
-              'fileSize': fileSize,
-              'transferProgress': 0.0,
-              'fileId': fileId,
-              'timestamp':
-                  data['timestamp'] ?? DateTime.now().millisecondsSinceEpoch,
-              'isRead': false,
-              'type': 'file', // Show as file type in UI immediately
-              'replyToId': replyToId,
-              'replySnapshot': messagePayload['replySnapshot'],
-              'status': 'receiving',
-            };
-
-            await _local.saveMessage(currentUser.uid, roomId, message);
+          // --- SECURITY: METADATA VALIDATION ---
+          if (fileId == null || fileName == null) {
+            debugPrint('SECURITY ALERT: Missing fileId or fileName. Dropping.');
+            await _relay.sendAck(senderId: senderId, messageId: messageId);
+            await _relay.deleteFromRelay(messageId);
+            return;
           }
+
+          if (fileSize <= 0 || fileSize > _maxFileSize) {
+            debugPrint(
+              'SECURITY ALERT: Invalid file size $fileSize. Max is $_maxFileSize. Dropping.',
+            );
+            await _relay.sendAck(senderId: senderId, messageId: messageId);
+            await _relay.deleteFromRelay(messageId);
+            return;
+          }
+
+          if (chunks <= 0 || chunks > _maxChunks) {
+            debugPrint(
+              'SECURITY ALERT: Invalid chunk count $chunks. Max is $_maxChunks. Dropping.',
+            );
+            await _relay.sendAck(senderId: senderId, messageId: messageId);
+            await _relay.deleteFromRelay(messageId);
+            return;
+          }
+
+          if (chunkSize <= 0 || chunkSize > _maxChunkSize) {
+            debugPrint(
+              'SECURITY ALERT: Invalid chunk size $chunkSize. Max is $_maxChunkSize. Dropping.',
+            );
+            await _relay.sendAck(senderId: senderId, messageId: messageId);
+            await _relay.deleteFromRelay(messageId);
+            return;
+          }
+
+          // --- SECURITY: MATHEMATICAL CONSISTENCY (BUG-03) ---
+          final expectedChunks = (fileSize / chunkSize).ceil();
+          if (chunks != expectedChunks) {
+            debugPrint(
+              'SECURITY ALERT: Invalid chunks math ($chunks != $expectedChunks). Dropping.',
+            );
+            await _relay.sendAck(senderId: senderId, messageId: messageId);
+            await _relay.deleteFromRelay(messageId);
+            return;
+          }
+
+          // --- SECURITY: REQUIRED CHECKSUM (BUG-04) ---
+          final fileHashStr = fileHash.toString();
+          if (!RegExp(r'^[a-fA-F0-9]{64}$').hasMatch(fileHashStr)) {
+            debugPrint(
+              'SECURITY ALERT: Missing or invalid SHA-256 fileHash. Dropping.',
+            );
+            await _relay.sendAck(senderId: senderId, messageId: messageId);
+            await _relay.deleteFromRelay(messageId);
+            return;
+          }
+          final normalizedFileHash = fileHashStr.toLowerCase();
+
+          // --- SECURITY: DUPLICATE HEADER HANDLING ---
+          if (_activeDownloads.containsKey(fileId)) {
+            // If already downloading, check if metadata perfectly matches
+            if (_downloadTotalChunks[fileId] == chunks &&
+                _downloadChunkSizes[fileId] == chunkSize &&
+                _downloadExpectedHashes[fileId] == normalizedFileHash &&
+                _downloadFileNames[fileId] == fileName) {
+              debugPrint(
+                'DEBUG: Benign duplicate FILE_HEADER for $fileId. Ignoring.',
+              );
+            } else {
+              debugPrint(
+                'SECURITY ALERT: Conflicting duplicate FILE_HEADER for $fileId. Dropping.',
+              );
+            }
+            await _relay.sendAck(senderId: senderId, messageId: messageId);
+            await _relay.deleteFromRelay(messageId);
+            return;
+          }
+
+          // Create Placeholder Message
+          final dir = await getApplicationDocumentsDirectory();
+          final tempPath = '${dir.path}/${fileId}_temp';
+
+          // Initialize Download State
+          final file = await File(tempPath).open(mode: FileMode.write);
+          _activeDownloads[fileId] = file;
+          _downloadReceivedChunks[fileId] = <int>{};
+          _downloadTotalChunks[fileId] = chunks;
+          _downloadChunkSizes[fileId] = chunkSize;
+          _downloadExpectedHashes[fileId] = normalizedFileHash;
+          _downloadFileNames[fileId] = fileName;
+
+          final message = {
+            'id': messageId, // Use the header's ID as the main message ID
+            'senderId': senderId,
+            'text': '',
+            'fileUrl': null,
+            'fileName': fileName,
+            'fileSize': fileSize,
+            'transferProgress': 0.0,
+            'fileId': fileId,
+            'timestamp':
+                data['timestamp'] ?? DateTime.now().millisecondsSinceEpoch,
+            'isRead': false,
+            'type': 'file', // Show as file type in UI immediately
+            'replyToId': replyToId,
+            'replySnapshot': messagePayload['replySnapshot'],
+            'status': 'receiving',
+          };
+
+          await _local.saveMessage(currentUser.uid, roomId, message);
 
           await _relay.sendAck(senderId: senderId, messageId: messageId);
           await _relay.deleteFromRelay(messageId);
@@ -1238,8 +1450,32 @@ class ChatRepository {
               chunkData != null &&
               chunkIndex != null &&
               _activeDownloads.containsKey(fileId)) {
+            // --- SECURITY: PREVENT RACE CONDITIONS (P1-8) ---
+            final previousLock = _downloadLocks[fileId];
+            final completer = Completer<void>();
+            _downloadLocks[fileId] = completer.future;
+
             try {
+              if (previousLock != null) {
+                await previousLock;
+              }
+
+              // Check if download was cancelled/cleaned up while waiting for lock
+              if (!_activeDownloads.containsKey(fileId)) {
+                return;
+              }
+
               final totalChunks = _downloadTotalChunks[fileId] ?? 1;
+
+              // NEW: Strict bounds validation against Disk DoS
+              if (chunkIndex < 0 ||
+                  chunkIndex >= totalChunks ||
+                  totalChunks > 100000) {
+                debugPrint(
+                  'SECURITY ALERT: Invalid chunk index ($chunkIndex) or totalChunks ($totalChunks). Dropping.',
+                );
+                return;
+              }
 
               if (chunkIndex >= 0 && chunkIndex < totalChunks) {
                 final bytes = base64Decode(chunkData);
@@ -1247,14 +1483,25 @@ class ChatRepository {
                 final chunkSize = _downloadChunkSizes[fileId] ?? (512 * 1024);
                 final offset = chunkIndex * chunkSize;
 
+                // Validate chunk size (last chunk can be smaller)
+                if (bytes.length > chunkSize) {
+                  debugPrint(
+                    'SECURITY ALERT: Chunk payload larger than chunkSize. Dropping.',
+                  );
+                  return;
+                }
+
                 await raf.setPosition(offset);
                 await raf.writeFrom(bytes);
 
                 // Track chunk
-                _downloadReceivedChunks[fileId]?.add(chunkIndex);
+                final receivedSet = _downloadReceivedChunks[fileId];
+                if (receivedSet != null) {
+                  receivedSet.add(chunkIndex);
+                }
 
                 // Update Progress
-                final received = _downloadReceivedChunks[fileId]?.length ?? 0;
+                final received = receivedSet?.length ?? 0;
                 final progress = received / totalChunks;
 
                 final updatedFields = {
@@ -1269,10 +1516,20 @@ class ChatRepository {
                   updatedFields,
                 );
 
-                // Check Completion
-                if (received == totalChunks) {
+                // --- SECURITY: CHUNK COMPLETION VERIFICATION (P1-1) ---
+                bool isComplete = received == totalChunks;
+                if (isComplete && receivedSet != null) {
+                  for (int i = 0; i < totalChunks; i++) {
+                    if (!receivedSet.contains(i)) {
+                      isComplete = false;
+                      break;
+                    }
+                  }
+                }
+
+                if (isComplete) {
                   debugPrint(
-                    'DEBUG: File download chunks complete for $fileId',
+                    'DEBUG: File download chunks complete and verified for $fileId',
                   );
                   await raf.flush();
                   await raf.close();
@@ -1312,20 +1569,25 @@ class ChatRepository {
                     await tempFile.rename(finalPath);
 
                     // Finalize Message
-                    await _local.updateMessage(currentUser.uid, roomId, fileId, {
-                      'transferProgress': 1.0,
-                      'status':
-                          'sent', // Or 'read'/'delivered' effectively available
-                      'fileUrl': finalPath, // Local path
-                    });
+                    await _local.updateMessage(
+                      currentUser.uid,
+                      roomId,
+                      fileId,
+                      {
+                        'transferProgress': 1.0,
+                        'status': 'sent',
+                        'fileUrl': finalPath, // Local path
+                      },
+                    );
                   }
 
-                  // Clean up maps
+                  // Clean up state
                   _downloadReceivedChunks.remove(fileId);
                   _downloadTotalChunks.remove(fileId);
                   _downloadChunkSizes.remove(fileId);
                   _downloadExpectedHashes.remove(fileId);
                   _downloadFileNames.remove(fileId);
+                  _downloadLocks.remove(fileId);
                 }
               } else {
                 debugPrint(
@@ -1334,6 +1596,8 @@ class ChatRepository {
               }
             } catch (e) {
               debugPrint('Error writing chunk: $e');
+            } finally {
+              completer.complete();
             }
           } else {
             debugPrint(
@@ -1432,6 +1696,12 @@ class ChatRepository {
 
         // 5. Delete from Relay (Self-Cleanup)
         await _relay.deleteFromRelay(messageId);
+
+        // --- SECURITY: REPLAY PROTECTION ---
+        // Only mark processed after full success
+        if (currentHash != null) {
+          await _local.markMessageHashProcessed(currentUser.uid, currentHash!);
+        }
       } catch (e) {
         debugPrint('DEBUG: Error processing relay message: $e');
         // If the error is fatal (like Block truncated/Decryption failure), we should delete the message
@@ -1445,6 +1715,12 @@ class ChatRepository {
           await _relay.deleteFromRelay(messageId);
         } catch (delError) {
           debugPrint('DEBUG: Failed to delete corrupted message: $delError');
+        }
+      } finally {
+        // --- SECURITY: REPLAY PROTECTION ---
+        // Always clean up in-flight state to prevent memory leaks on returns
+        if (currentHash != null) {
+          _processingMessageHashes.remove(currentHash);
         }
       }
     });

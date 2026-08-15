@@ -1,0 +1,209 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- HELPER FUNCTIONS ---
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isParticipant(res) {
+      return request.auth.uid in res.data.participants;
+    }
+    
+    function isAdmin(res) {
+      return request.auth.uid in res.data.admins;
+    }
+    
+    function isCreator(res) {
+      return request.auth.uid == res.data.createdBy;
+    }
+
+    // Ensures user only modifies participants and/or admins
+    function isOnlyModifyingSelfPresence(res, req) {
+      let diff = req.data.diff(res.data);
+      let affectedKeys = diff.affectedKeys();
+      return affectedKeys.hasOnly(['participants', 'admins']);
+    }
+
+    // Validates a legitimate Self Leave
+    function isSelfLeave(res, req) {
+      let oldParticipants = res.data.participants;
+      let newParticipants = req.data.participants;
+      
+      let isRemovingSelfParticipant = (
+        (request.auth.uid in oldParticipants) && // MUST VERIFY
+        newParticipants.size() == oldParticipants.size() - 1 &&
+        newParticipants.hasOnly(oldParticipants) &&
+        !(request.auth.uid in newParticipants)
+      );
+
+      let oldAdmins = res.data.get('admins', []);
+      let newAdmins = req.data.get('admins', []);
+      let diff = req.data.diff(res.data);
+      
+      let isAdminChangeValid = 
+        (!('admins' in diff.affectedKeys())) || 
+        ( 
+          (request.auth.uid in oldAdmins) && // MUST VERIFY
+          newAdmins.size() == oldAdmins.size() - 1 &&
+          newAdmins.hasOnly(oldAdmins) &&
+          !(request.auth.uid in newAdmins)
+        );
+
+      return isRemovingSelfParticipant && isAdminChangeValid;
+    }
+
+    // Validates joining a public group
+    function isPublicJoin(res, req) {
+      let oldParticipants = res.data.participants;
+      let newParticipants = req.data.participants;
+      
+      let isAddingSelfParticipant = (
+        newParticipants.size() == oldParticipants.size() + 1 &&
+        oldParticipants.hasOnly(newParticipants) && 
+        (request.auth.uid in newParticipants) && 
+        !(request.auth.uid in oldParticipants)
+      );
+
+      let diff = req.data.diff(res.data);
+      let noAdminChange = !('admins' in diff.affectedKeys()); 
+
+      return isAddingSelfParticipant && noAdminChange;
+    }
+
+    // Validates a normal Admin update (e.g. changing name, adding members, promoting admins)
+    function isAdminUpdate(res, req) {
+      let admin = isAdmin(res);
+      // createdBy must NEVER be changed by anyone
+      let createdByUnchanged = req.data.get('createdBy', '') == res.data.get('createdBy', '');
+      return admin && createdByUnchanged;
+    }
+
+
+    // --- USERS & DIRECT CHATS ---
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId);
+      allow delete: if isOwner(userId);
+
+      match /sync_requests/{docId} {
+        allow create: if isAuthenticated() && request.resource.data.requesterId == request.auth.uid;
+        allow read, delete: if isOwner(userId);
+      }
+
+      match /sync_inbox/{docId} {
+        allow create: if isAuthenticated() && request.resource.data.senderId == request.auth.uid;
+        allow read, delete: if isOwner(userId);
+      }
+
+      match /active_chats/{peerId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    match /chats/{chatId} {
+      allow read: if isAuthenticated() &&
+        request.auth.uid in resource.data.participants;
+
+      allow create: if isAuthenticated() &&
+        request.auth.uid in request.resource.data.participants;
+
+      allow update: if isAuthenticated() &&
+        request.auth.uid in resource.data.participants;
+
+      allow delete: if isAuthenticated() &&
+        request.auth.uid in resource.data.participants;
+
+      match /messages/{messageId} {
+        allow read, update: if isAuthenticated() &&
+          request.auth.uid in
+          get(/databases/$(database)/documents/chats/$(chatId))
+            .data.participants;
+
+        allow create: if isAuthenticated() &&
+          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants &&
+          request.auth.uid == request.resource.data.senderId;
+
+        allow delete: if isAuthenticated() &&
+          request.auth.uid == resource.data.senderId;
+      }
+
+      match /typingStatus/{userId} {
+        allow read, write: if isAuthenticated() &&
+          request.auth.uid in
+          get(/databases/$(database)/documents/chats/$(chatId))
+            .data.participants;
+      }
+    }
+
+
+    // --- GROUP CHATS ---
+    match /group_chats/{groupId} {
+      allow read: if isAuthenticated() && (isParticipant(resource) || resource.data.isPublic == true);
+      
+      allow create: if isAuthenticated() 
+                    && request.resource.data.createdBy == request.auth.uid
+                    && request.resource.data.admins == [request.auth.uid]
+                    && request.auth.uid in request.resource.data.participants;
+                    
+      allow update: if isAuthenticated() && (
+                      (isAdminUpdate(resource, request.resource)) ||
+                      (isOnlyModifyingSelfPresence(resource, request.resource) && isSelfLeave(resource, request.resource)) ||
+                      (resource.data.isPublic == true && isOnlyModifyingSelfPresence(resource, request.resource) && isPublicJoin(resource, request.resource))
+                    );
+                    
+      allow delete: if isAuthenticated() && isCreator(resource);
+      
+      match /messages/{messageId} {
+        // Any participant can read messages, or create if senderId == auth.uid
+        allow read: if isAuthenticated() && 
+          request.auth.uid in get(/databases/$(database)/documents/group_chats/$(groupId)).data.participants;
+          
+        allow create: if isAuthenticated() && 
+          request.auth.uid in get(/databases/$(database)/documents/group_chats/$(groupId)).data.participants &&
+          request.resource.data.senderId == request.auth.uid;
+          
+        allow update, delete: if isAuthenticated() && 
+          request.auth.uid in get(/databases/$(database)/documents/group_chats/$(groupId)).data.participants &&
+          resource.data.senderId == request.auth.uid;
+      }
+    }
+
+    // --- GROUP HANDLES ---
+    match /group_handles/{handleId} {
+      allow read: if isAuthenticated();
+      
+      // CREATE: Must be an admin of the target roomId
+      allow create: if isAuthenticated() 
+                    && request.auth.uid in get(/databases/$(database)/documents/group_chats/$(request.resource.data.roomId)).data.admins;
+                    
+      // UPDATE: Must be admin of both the OLD group (prevent stealing) and the NEW group
+      allow update: if isAuthenticated() 
+                    && request.auth.uid in get(/databases/$(database)/documents/group_chats/$(resource.data.roomId)).data.admins
+                    && request.auth.uid in get(/databases/$(database)/documents/group_chats/$(request.resource.data.roomId)).data.admins;
+                    
+      // DELETE: Must be admin of the group owning the handle
+      allow delete: if isAuthenticated() 
+                    && request.auth.uid in get(/databases/$(database)/documents/group_chats/$(resource.data.roomId)).data.admins;
+    }
+
+    // --- PUBLIC GROUPS ---
+    match /public_groups/{groupId} {
+      allow read: if isAuthenticated();
+      // The document ID in public_groups matches the groupId. User must be admin in group_chats.
+      allow create, update, delete: if isAuthenticated() && 
+        request.auth.uid in get(/databases/$(database)/documents/group_chats/$(groupId)).data.admins;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

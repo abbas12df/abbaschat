@@ -418,8 +418,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
               .createOrGetChatRoom(widget.otherUserId, persist: false);
     if (mounted) {
       setState(() => _roomId = roomId);
-      // Update active room ID to suppress notifications
-      ref.read(activeChatRoomIdProvider.notifier).state = roomId;
+      // Update active room ID to suppress notifications (delayed to avoid build-phase modifications)
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ref.read(activeChatRoomIdProvider.notifier).state = roomId;
+        }
+      });
       _msgController.addListener(_onTypingChanged);
 
       // --- SECURITY CHECK (Groups Only) ---
