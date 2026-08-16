@@ -80,7 +80,20 @@ class NotificationWatcher extends ConsumerWidget {
               continue;
             }
 
-            // 2. Prepare Body based on Preview Setting
+            // 2. Do Not Disturb (DND) Schedule Check
+            if (settings.doNotDisturbEnabled) {
+              if (_isCurrentlyInDnd(
+                settings.doNotDisturbStart,
+                settings.doNotDisturbEnd,
+              )) {
+                debugPrint(
+                  'DEBUG (Watcher): Notification suppressed due to active DND schedule (${settings.doNotDisturbStart} - ${settings.doNotDisturbEnd}).',
+                );
+                continue;
+              }
+            }
+
+            // 3. Prepare Body based on Preview Setting
             final String bodyText = settings.notificationPreview
                 ? chat.lastMessage
                 : 'رسالة جديدة';
@@ -98,5 +111,28 @@ class NotificationWatcher extends ConsumerWidget {
     });
 
     return child;
+  }
+
+  bool _isCurrentlyInDnd(String startStr, String endStr) {
+    try {
+      final now = DateTime.now();
+      final currentMinutes = now.hour * 60 + now.minute;
+
+      final startParts = startStr.split(':').map(int.parse).toList();
+      final endParts = endStr.split(':').map(int.parse).toList();
+
+      final startMinutes = startParts[0] * 60 + startParts[1];
+      final endMinutes = endParts[0] * 60 + endParts[1];
+
+      if (startMinutes < endMinutes) {
+        return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+      } else if (startMinutes > endMinutes) {
+        return currentMinutes >= startMinutes || currentMinutes < endMinutes;
+      } else {
+        return false;
+      }
+    } catch (e) {
+      return false;
+    }
   }
 }

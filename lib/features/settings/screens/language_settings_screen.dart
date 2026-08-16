@@ -125,33 +125,40 @@ class _LanguageSettingsScreenState extends ConsumerState<LanguageSettingsScreen>
     required String name,
     required String native,
   }) {
+    final isArabic = code == 'ar';
     final isSelected = _selectedLanguage == code;
     final theme = Theme.of(context);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: isSelected ? theme.primaryColor.withOpacity(0.05) : null,
+        color: isSelected ? theme.primaryColor.withValues(alpha: 0.05) : null,
         borderRadius: BorderRadius.circular(12),
         border: isSelected
-            ? Border.all(color: theme.primaryColor.withOpacity(0.3))
+            ? Border.all(color: theme.primaryColor.withValues(alpha: 0.3))
             : null,
       ),
-      child: RadioListTile<String>(
-        value: code,
-        groupValue: _selectedLanguage,
-        onChanged: (val) {
-          if (val != null) _updateLanguage(val);
-        },
-        activeColor: theme.primaryColor,
+      child: ListTile(
+        onTap: isArabic
+            ? () => _updateLanguage('ar')
+            : () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'اللغة الإنجليزية قيد التطوير حالياً. اللغة الأساسية المتاحة هي العربية.',
+                    ),
+                  ),
+                );
+              },
+        leading: Icon(
+          Icons.check_circle,
+          size: 20,
+          color: isSelected
+              ? theme.primaryColor
+              : Colors.grey.withValues(alpha: 0.3),
+        ),
         title: Row(
           children: [
-            Icon(
-              Icons.check_circle,
-              size: 20,
-              color: isSelected ? theme.primaryColor : Colors.transparent,
-            ),
-            const SizedBox(width: 12),
             Text(
               native,
               style: TextStyle(
@@ -159,14 +166,33 @@ class _LanguageSettingsScreenState extends ConsumerState<LanguageSettingsScreen>
                 color: isSelected ? theme.primaryColor : null,
               ),
             ),
+            if (!isArabic) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  'قريباً',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.orange,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(right: 32.0),
-          child: Text(name, style: const TextStyle(fontSize: 12)),
+        subtitle: Text(
+          isArabic
+              ? 'اللغة الرسمية للتطبيق (مُفعلة بالكامل)'
+              : 'قيد التطوير - التطبيق يدعم العربية حالياً',
+          style: const TextStyle(fontSize: 12),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }

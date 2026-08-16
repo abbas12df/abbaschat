@@ -149,12 +149,29 @@ class ChatRepository {
   Stream<SyncStatus> get syncStatus => _syncStatusController.stream;
 
   StreamSubscription? _inboxSubscription;
+  Set<String> _blockedUsersCache = {};
+
+  Future<void> _fetchBlockedUsersCache() async {
+    final myId = _auth.currentUser?.uid;
+    if (myId == null) return;
+    try {
+      final doc =
+          await FirebaseFirestore.instance.collection('users').doc(myId).get();
+      if (doc.exists) {
+        final list = List<String>.from(doc.data()?['blockedUsers'] ?? []);
+        _blockedUsersCache = list.toSet();
+      }
+    } catch (e) {
+      debugPrint('DEBUG: Error fetching blocked users cache: $e');
+    }
+  }
 
   ChatRepository(this._local, this._relay, this._keyRepo, this._auth) {
     final uid = _auth.currentUser?.uid;
     if (uid != null) {
       // Initialize the purely local storage for this user
       _local.openUserBox(uid).then((_) {
+        _fetchBlockedUsersCache();
         // Only start listening after box is ready
         _initializeInboxListener();
         _initializeSyncListeners(); // Added for P2P Sync
@@ -430,6 +447,15 @@ class ChatRepository {
       final String messageId = event.snapshot.key!;
       final String senderId = data['sender_id'];
       debugPrint('DEBUG: Processing message $messageId from $senderId');
+
+      if (_blockedUsersCache.contains(senderId)) {
+        debugPrint(
+          'SECURITY ALERT: Dropping message $messageId from blocked user $senderId.',
+        );
+        await _relay.sendAck(senderId: senderId, messageId: messageId);
+        await _relay.deleteFromRelay(messageId);
+        return;
+      }
 
       final currentUser = _auth.currentUser;
       if (currentUser == null) {
@@ -2780,6 +2806,7 @@ class ChatRepository {
     await FirebaseFirestore.instance.collection('users').doc(myId).update({
       'blockedUsers': FieldValue.arrayUnion([uidToBlock]),
     });
+    _blockedUsersCache.add(uidToBlock);
   }
 
   Future<void> unblockUser(String uidToUnblock) async {
@@ -2789,6 +2816,7 @@ class ChatRepository {
     await FirebaseFirestore.instance.collection('users').doc(myId).update({
       'blockedUsers': FieldValue.arrayRemove([uidToUnblock]),
     });
+    _blockedUsersCache.remove(uidToUnblock);
   }
 
   // ---------------------------------------------------------------------------

@@ -38,24 +38,25 @@ class _AppLockManagerState extends ConsumerState<AppLockManager>
     super.dispose();
   }
 
+  DateTime? _pausedTime;
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // User requested: Do NOT lock when resuming from background if "active".
-    // Only lock on Cold Start (handled in initState).
-    // Logic for background locking is disabled based on user request.
-
-    /*
-    if (state == AppLifecycleState.paused) {
-      _pausedTime = DateTime.now();
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      _pausedTime ??= DateTime.now();
     } else if (state == AppLifecycleState.resumed) {
       final settings = ref.read(settingsServiceProvider);
       if (settings.appLock && _pausedTime != null) {
-        // Optional: Add timeout here if user changes mind (e.g. > 5 mins)
-        // _promptBiometrics();
+        final elapsedSeconds =
+            DateTime.now().difference(_pausedTime!).inSeconds;
+        // autoLockTimeout: 0 = immediately, 30 = 30s, 60 = 1m, 300 = 5m
+        if (elapsedSeconds >= settings.autoLockTimeout) {
+          _promptBiometrics();
+        }
       }
       _pausedTime = null;
     }
-    */
   }
 
   Future<void> _promptBiometrics({bool ignoreLockState = false}) async {

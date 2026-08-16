@@ -92,9 +92,11 @@ class _SecuritySettingsScreenState
               color: Theme.of(context).iconTheme.color,
             ),
             title: const Text('منع لقطات الشاشة'),
-            subtitle: const Text('حجب محتوى التطبيق في قائمة التطبيقات'),
+            subtitle: const Text(
+              'يحمي جهازك أنت فقط من التقاط الشاشة ويخفي المعاينة بقائمة التطبيقات (لا يمنع الطرف الآخر من تصوير شاشته)',
+            ),
             value: _preventScreenshots,
-            activeColor: Theme.of(context).primaryColor,
+            activeThumbColor: Theme.of(context).primaryColor,
             onChanged: _handlePreventScreenshotsToggle,
           ),
 
@@ -395,19 +397,6 @@ class _SecuritySettingsScreenState
               FirebaseAuth.instance.currentUser?.uid.substring(0, 12) ??
                   'غير معروف',
             ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                icon: const Icon(Icons.logout),
-                label: const Text('تسجيل الخروج من الجلسة'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.error,
-                  foregroundColor: Colors.white,
-                ),
-                onPressed: null, // MISSING_BACKEND
-              ),
-            ),
           ],
         ),
       ),
@@ -424,52 +413,7 @@ class _SecuritySettingsScreenState
     );
   }
 
-  Future<void> _showLogoutAllDevicesDialog() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('تسجيل الخروج من جميع الأجهزة؟'),
-        content: const Text(
-          'سيتم تسجيل الخروج من جميع الأجهزة الأخرى المتصلة بهذا الحساب.\n\nملاحظة: هذا الإجراء لا يؤثر على الجهاز الحالي.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('إلغاء'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('تأكيد'),
-          ),
-        ],
-      ),
-    );
 
-    if (confirmed == true && mounted) {
-      try {
-        // Note: Firebase doesn't have a built-in "logout all devices" feature
-        // This would require backend implementation. For now, we show a message.
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'ملاحظة: هذه الميزة تتطلب إعدادات خادم إضافية. سيتم إضافتها قريباً.',
-            ),
-            duration: Duration(seconds: 3),
-          ),
-        );
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('خطأ: $e')));
-        }
-      }
-    }
-  }
 
   Widget _buildSecurityTile(
     BuildContext context, {

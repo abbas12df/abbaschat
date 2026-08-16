@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
 import 'dart:convert';
 import 'dart:io';
 import '../../../../core/local/local_storage_service.dart';
@@ -295,26 +296,44 @@ class _StorageSettingsScreenState extends ConsumerState<StorageSettingsScreen> {
           ListTile(
             leading: const Icon(Icons.cleaning_services_outlined),
             title: const Text('مسح الملفات المؤقتة'),
-            subtitle: const Text('تحرير مساحة التخزين'),
+            subtitle: const Text('تحرير مساحة التخزين من الملفات المؤقتة'),
             onTap: () async {
               try {
-                // Clear image cache
-                // Note: cached_network_image doesn't have a direct clear method
-                // This is a placeholder for future implementation
+                int totalFreed = 0;
+                final tempDir = await getTemporaryDirectory();
+                if (await tempDir.exists()) {
+                  final entities = tempDir.listSync(recursive: true);
+                  for (final entity in entities) {
+                    if (entity is File) {
+                      try {
+                        final len = await entity.length();
+                        await entity.delete();
+                        totalFreed += len;
+                      } catch (_) {
+                        // Skip if file locked
+                      }
+                    }
+                  }
+                }
+
                 if (context.mounted) {
+                  final freedText = _formatBytes(totalFreed);
+                  final msg = totalFreed > 0
+                      ? 'تم تحرير $freedText من الملفات المؤقتة بنجاح ✅'
+                      : 'لا توجد ملفات مؤقتة للمسح حالياً ✅';
+
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('تم تنظيف الكاش ✅'),
+                    SnackBar(
+                      content: Text(msg),
                       backgroundColor: Colors.green,
                     ),
                   );
-                  // Refresh storage calculation
                   _calculateStorage();
                 }
               } catch (e) {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('خطأ: $e')),
+                    SnackBar(content: Text('خطأ أثناء مسح الكاش: $e')),
                   );
                 }
               }
