@@ -21,7 +21,7 @@ class SettingsScreen extends ConsumerWidget {
     final items = _buildItems();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(title: const Text('الإعدادات')),
       body: isLargeScreen
           ? _buildLargeSettingsView(context, items, isTv)
           : _buildMobileSettingsView(context, items),
@@ -98,24 +98,27 @@ class SettingsScreen extends ConsumerWidget {
       sections.putIfAbsent(item.section, () => []).add(item);
     }
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: sections.entries.expand((entry) {
-        final header = [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
-            child: Text(
-              entry.key,
-              style: Theme.of(context).textTheme.bodySmall,
+    return SafeArea(
+      top: false,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: sections.entries.expand((entry) {
+          final header = [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+              child: Text(
+                entry.key,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             ),
-          ),
-        ];
+          ];
 
-        final tiles = entry.value
-            .map((item) => _SettingsListTile(item: item))
-            .toList();
-        return [...header, ...tiles];
-      }).toList(),
+          final tiles = entry.value
+              .map((item) => _SettingsListTile(item: item))
+              .toList();
+          return [...header, ...tiles];
+        }).toList(),
+      ),
     );
   }
 
@@ -186,7 +189,7 @@ class SettingsScreen extends ConsumerWidget {
                 crossAxisCount: isTv ? 3 : 2,
                 crossAxisSpacing: 14,
                 mainAxisSpacing: 14,
-                childAspectRatio: isTv ? 1.75 : 2.2,
+                mainAxisExtent: isTv ? 100 : 90,
               ),
             ),
           ),
@@ -203,31 +206,38 @@ class _SettingsListTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Theme.of(context).dividerColor),
-      ),
-      child: ListTile(
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: Theme.of(
-              context,
-            ).colorScheme.primary.withValues(alpha: 0.12),
-            shape: BoxShape.circle,
+    return Semantics(
+      label: '${item.title}: ${item.subtitle}',
+      button: true,
+      child: Card(
+        elevation: 0,
+        margin: const EdgeInsets.only(bottom: 8),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: Theme.of(context).dividerColor),
+        ),
+        child: ListTile(
+          leading: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Theme.of(
+                context,
+              ).colorScheme.primary.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              item.icon,
+              color: Theme.of(context).colorScheme.primary,
+            ),
           ),
-          child: Icon(item.icon, color: Theme.of(context).colorScheme.primary),
+          title: Text(
+            item.title,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          subtitle: Text(item.subtitle),
+          trailing: const Icon(Icons.chevron_right, size: 20),
+          onTap: () => _open(context, item.destination),
         ),
-        title: Text(
-          item.title,
-          style: const TextStyle(fontWeight: FontWeight.w700),
-        ),
-        subtitle: Text(item.subtitle),
-        trailing: const Icon(Icons.arrow_forward_ios, size: 14),
-        onTap: () => _open(context, item.destination),
       ),
     );
   }
@@ -292,50 +302,56 @@ class _SettingsGridCardState extends State<_SettingsGridCard> {
                   ]
                 : const [],
           ),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(16),
-            onTap: () => _open(context, widget.item.destination),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: theme.colorScheme.primary.withValues(alpha: 0.14),
+          child: Semantics(
+            label: '${widget.item.title}: ${widget.item.subtitle}',
+            button: true,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: () => _open(context, widget.item.destination),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: theme.colorScheme.primary.withValues(
+                          alpha: 0.14,
+                        ),
+                      ),
+                      child: Icon(
+                        widget.item.icon,
+                        color: theme.colorScheme.primary,
+                      ),
                     ),
-                    child: Icon(
-                      widget.item.icon,
-                      color: theme.colorScheme.primary,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          widget.item.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            widget.item.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          widget.item.subtitle,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall,
-                        ),
-                      ],
+                          const SizedBox(height: 4),
+                          Text(
+                            widget.item.subtitle,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

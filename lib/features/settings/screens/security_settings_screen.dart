@@ -4,13 +4,12 @@ import 'package:crypto/crypto.dart'; // Added for fingerprint
 import 'dart:convert'; // Added for utf8
 
 import '../../../../core/security/crypto_service.dart';
+import '../../../../core/security/screen_security_service.dart';
 import '../../auth/repositories/key_repository.dart';
 import '../services/settings_service.dart';
 import '../../../../core/security/biometric_service.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'dart:io';
-import 'package:screen_protector/screen_protector.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'blocked_users_screen.dart';
 
@@ -41,16 +40,9 @@ class _SecuritySettingsScreenState
     final settings = ref.read(settingsServiceProvider);
     await settings.init();
 
-    // تحميل الإعدادات محلياً لضمان استمراريتها
-    final box = await Hive.openBox('security_prefs');
-    final preventScreenshots = box.get(
-      'prevent_screenshots',
-      defaultValue: false,
-    );
-
-    if (preventScreenshots && Platform.isAndroid) {
-      await ScreenProtector.protectDataLeakageOn();
-    }
+    await ScreenSecurityService.applyGlobalProtection();
+    final preventScreenshots =
+        await ScreenSecurityService.isGlobalProtectionEnabled();
 
     if (!mounted) return;
     setState(() {
@@ -177,9 +169,7 @@ class _SecuritySettingsScreenState
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => const BlockedUsersScreen(),
-                ),
+                MaterialPageRoute(builder: (_) => const BlockedUsersScreen()),
               );
             },
           ),
@@ -200,14 +190,10 @@ class _SecuritySettingsScreenState
             ),
             title: Text(
               'تسجيل الخروج من جميع الأجهزة',
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.error,
-              ),
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
-            subtitle: const Text(
-              'سيتم تسجيل الخروج من جميع الأجهزة الأخرى',
-            ),
-            onTap: _showLogoutAllDevicesDialog,
+            subtitle: const Text('سيتم تسجيل الخروج من جميع الأجهزة الأخرى'),
+            onTap: null, // MISSING_BACKEND
           ),
         ],
       ),
@@ -264,7 +250,9 @@ class _SecuritySettingsScreenState
       await ref.read(settingsServiceProvider).setAutoLockTimeout(selected);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('تم حفظ الإعداد: ${_getTimeoutLabel(selected)}')),
+          SnackBar(
+            content: Text('تم حفظ الإعداد: ${_getTimeoutLabel(selected)}'),
+          ),
         );
       }
     }
@@ -290,21 +278,7 @@ class _SecuritySettingsScreenState
   // --- Helpers ---
   Future<void> _handlePreventScreenshotsToggle(bool val) async {
     setState(() => _preventScreenshots = val);
-
-    final box = await Hive.openBox('security_prefs');
-    await box.put('prevent_screenshots', val);
-
-    if (Platform.isAndroid) {
-      try {
-        if (val) {
-          await ScreenProtector.protectDataLeakageOn();
-        } else {
-          await ScreenProtector.protectDataLeakageOff();
-        }
-      } catch (e) {
-        debugPrint('Error toggling screen security: $e');
-      }
-    }
+    await ScreenSecurityService.setGlobalProtection(val);
   }
 
   Future<void> _handleAppLockToggle(bool val) async {
@@ -431,11 +405,7 @@ class _SecuritySettingsScreenState
                   backgroundColor: Theme.of(context).colorScheme.error,
                   foregroundColor: Colors.white,
                 ),
-                onPressed: () {
-                  // We can't really logout "just this session" easily without backend support
-                  // So we mimic a logout or just info.
-                  Navigator.pop(ctx);
-                },
+                onPressed: null, // MISSING_BACKEND
               ),
             ),
           ],
@@ -493,9 +463,9 @@ class _SecuritySettingsScreenState
         );
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('خطأ: $e')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('خطأ: $e')));
         }
       }
     }

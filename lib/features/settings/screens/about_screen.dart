@@ -187,43 +187,19 @@ class _AboutScreenState extends ConsumerState<AboutScreen> {
             icon: Icons.description,
             title: 'شروط الاستخدام',
             subtitle: 'اقرأ شروط استخدام التطبيق',
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'سيتم إضافة رابط شروط الاستخدام قريباً',
-                  ),
-                ),
-              );
-            },
+            onTap: null,
           ),
           _buildLinkTile(
             icon: Icons.privacy_tip,
             title: 'سياسة الخصوصية',
             subtitle: 'تعرف على كيفية حماية بياناتك',
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'سيتم إضافة رابط سياسة الخصوصية قريباً',
-                  ),
-                ),
-              );
-            },
+            onTap: null,
           ),
           _buildLinkTile(
             icon: Icons.code,
             title: 'المصدر المفتوح',
             subtitle: 'شاهد الكود المصدري على GitHub',
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'سيتم إضافة رابط المستودع قريباً',
-                  ),
-                ),
-              );
-            },
+            onTap: null,
           ),
           _buildLinkTile(
             icon: Icons.bug_report,
@@ -343,7 +319,7 @@ class _AboutScreenState extends ConsumerState<AboutScreen> {
     required IconData icon,
     required String title,
     String? subtitle,
-    required VoidCallback onTap,
+    VoidCallback? onTap,
   }) {
     return ListTile(
       leading: Icon(icon, color: Theme.of(context).iconTheme.color),

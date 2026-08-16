@@ -10,6 +10,13 @@ final localStorageServiceProvider = Provider<LocalStorageService>((ref) {
   return LocalStorageService(secureStorage);
 });
 
+final chatMuteProvider = StreamProvider.family
+    .autoDispose<bool, ({String userId, String roomId})>((ref, arg) {
+      return ref
+          .watch(localStorageServiceProvider)
+          .watchMuteStatus(arg.userId, arg.roomId);
+    });
+
 class LocalStorageService {
   final SecureStorageService _secureStorage;
   Uint8List? _encryptionKey;
@@ -101,14 +108,18 @@ class LocalStorageService {
   Future<void> openUserBox(String userId) async {
     await _openSecureBox('conversations_$userId');
     await _openSecureBox('settings_$userId'); // Open settings box
-    
+
     // Open deduplication box and run cleanup
     await _openSecureBox('processed_message_hashes_$userId');
     _cleanupProcessedHashes(userId); // Run async without blocking
   }
 
   // --- Replay Protection (Deduplication) ---
-  Future<bool> isMessageHashProcessed(String userId, String hash, {Duration window = const Duration(minutes: 5)}) async {
+  Future<bool> isMessageHashProcessed(
+    String userId,
+    String hash, {
+    Duration window = const Duration(minutes: 5),
+  }) async {
     final boxName = 'processed_message_hashes_$userId';
     var box = await _openSecureBox(boxName);
     if (!box.isOpen) box = await _openSecureBox(boxName);
@@ -135,7 +146,10 @@ class LocalStorageService {
     }
   }
 
-  Future<void> _cleanupProcessedHashes(String userId, {Duration maxAge = const Duration(hours: 48)}) async {
+  Future<void> _cleanupProcessedHashes(
+    String userId, {
+    Duration maxAge = const Duration(hours: 48),
+  }) async {
     final boxName = 'processed_message_hashes_$userId';
     try {
       if (!Hive.isBoxOpen(boxName)) return;
@@ -181,6 +195,21 @@ class LocalStorageService {
   bool isMuted(String userId, String roomId) {
     final val = getUserSetting(userId, 'mute_$roomId');
     return val == true;
+  }
+
+  Stream<bool> watchMuteStatus(String userId, String roomId) async* {
+    final boxName = 'settings_$userId';
+    if (!Hive.isBoxOpen(boxName)) {
+      await openUserBox(userId);
+    }
+    if (Hive.isBoxOpen(boxName)) {
+      final box = Hive.box(boxName);
+      final key = 'mute_$roomId';
+      yield box.get(key) == true;
+      yield* box.watch(key: key).map((event) => event.value == true);
+    } else {
+      yield false;
+    }
   }
 
   // --- Messages ---

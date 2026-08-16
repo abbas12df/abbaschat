@@ -15,6 +15,7 @@ import 'package:path_provider/path_provider.dart';
 import '../repositories/chat_repository.dart';
 import '../../auth/repositories/key_repository.dart';
 import '../../../../core/security/crypto_service.dart';
+import '../../../../core/security/screen_security_service.dart';
 import '../models/message.dart';
 import '../models/chat_room.dart';
 import '../../../core/widgets/connection_status_bar.dart';
@@ -477,6 +478,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       // Widget already disposed or ref invalid, ignore silently
       // This is expected when widget is being disposed
     }
+    ScreenSecurityService.applyGlobalProtection();
     _msgController.dispose();
     _searchController.dispose();
     _audioRecorder.dispose();
@@ -1016,6 +1018,24 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       appBar: _buildAppBar(),
       body: Stack(
         children: [
+          // --- SCREENSHOT PROTECTION SYNC LISTENER ---
+          if (_roomId != null)
+            StreamBuilder<ChatRoom?>(
+              stream: ref.watch(chatRepositoryProvider).watchChatData(_roomId!),
+              builder: (context, snapshot) {
+                if (snapshot.hasData && snapshot.data != null) {
+                  final room = snapshot.data!;
+                  final isProtected =
+                      room.isOutgoingProtectionEnabled ||
+                      room.isRemoteProtectionEnforced;
+                  ScreenSecurityService.syncRoomProtection(
+                    isRoomProtectionEnabled: isProtected,
+                  );
+                }
+                return const SizedBox.shrink();
+              },
+            ),
+
           // --- AUTO-CLOSE LISTENER ---
           // Watches if the chat is deleted (e.g. kicked from group)
           StreamBuilder<List<ChatRoom>>(
@@ -1733,7 +1753,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         final bool isMuted =
             _roomId != null &&
             myId != null &&
-            ref.watch(localStorageServiceProvider).isMuted(myId, _roomId!);
+            (ref
+                    .watch(chatMuteProvider((userId: myId, roomId: _roomId!)))
+                    .value ??
+                ref.read(localStorageServiceProvider).isMuted(myId, _roomId!));
 
         return Column(
           children: [

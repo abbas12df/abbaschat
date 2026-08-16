@@ -90,8 +90,8 @@ class _PrivacySettingsScreenState extends ConsumerState<PrivacySettingsScreen> {
 
           _buildSectionHeader('المجموعات والاتصال'),
           ListTile(
-            title: const Text('المجموعات (قريباً)'),
-            subtitle: const Text('من يمكنه إضافتي للمجموعات'),
+            title: const Text('المجموعات'),
+            subtitle: const Text('من يمكنه إضافتي للمجموعات (قريباً)'),
             enabled: false,
             trailing: const Icon(Icons.arrow_forward_ios, size: 14),
           ),

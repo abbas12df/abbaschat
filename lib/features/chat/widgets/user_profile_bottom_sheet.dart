@@ -285,7 +285,8 @@ class UserProfileBottomSheet extends ConsumerWidget {
                                     color: Colors.transparent,
                                     child: InkWell(
                                       onTap: () {
-                                        final fingerprint = _getIdentityFingerprint(publicKey);
+                                        final fingerprint =
+                                            _getIdentityFingerprint(publicKey);
                                         Clipboard.setData(
                                           ClipboardData(text: fingerprint),
                                         );
@@ -436,12 +437,19 @@ class UserProfileBottomSheet extends ConsumerWidget {
                                     color: theme.colorScheme.primary,
                                   );
                                 }
-                                // After null check, use non-null assertion
                                 final String validMyId = currentMyId;
                                 final String validRoomId = currentRoomId;
-                                final currentIsMuted = ref
-                                    .watch(localStorageServiceProvider)
-                                    .isMuted(validMyId, validRoomId);
+                                final muteAsync = ref.watch(
+                                  chatMuteProvider((
+                                    userId: validMyId,
+                                    roomId: validRoomId,
+                                  )),
+                                );
+                                final currentIsMuted =
+                                    muteAsync.value ??
+                                    ref
+                                        .read(localStorageServiceProvider)
+                                        .isMuted(validMyId, validRoomId);
                                 return _buildQuickAction(
                                   context,
                                   currentIsMuted
@@ -449,27 +457,28 @@ class UserProfileBottomSheet extends ConsumerWidget {
                                       : Icons.notifications_active,
                                   currentIsMuted ? 'مكتوم' : 'تنبيهات',
                                   () async {
+                                    final newStatus = !currentIsMuted;
                                     await ref
                                         .read(chatRepositoryProvider)
-                                        .toggleMute(
-                                          validRoomId,
-                                          !currentIsMuted,
-                                        );
-                                    // Show feedback
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          !currentIsMuted
-                                              ? 'تم كتم الإشعارات'
-                                              : 'تم تفعيل الإشعارات',
+                                        .toggleMute(validRoomId, newStatus);
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            newStatus
+                                                ? 'تم كتم الإشعارات'
+                                                : 'تم تفعيل الإشعارات',
+                                          ),
+                                          backgroundColor: newStatus
+                                              ? Colors.orange
+                                              : theme.colorScheme.primary,
+                                          duration: const Duration(seconds: 1),
+                                          behavior: SnackBarBehavior.floating,
                                         ),
-                                        backgroundColor: !currentIsMuted
-                                            ? Colors.orange
-                                            : theme.colorScheme.primary,
-                                        duration: const Duration(seconds: 1),
-                                        behavior: SnackBarBehavior.floating,
-                                      ),
-                                    );
+                                      );
+                                    }
                                   },
                                   color: currentIsMuted
                                       ? Colors.orange

@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:share_plus/share_plus.dart';
 import '../models/message.dart';
 import '../repositories/chat_repository.dart';
 import 'linkable_message_text.dart';
@@ -340,8 +342,9 @@ class MessageBubble extends ConsumerWidget {
       print('DEBUG: _buildImage - messageId=${message.id}, imageUrl is NULL!');
     }
 
-    final isTransferring = message.status == MessageStatus.sending || 
-                           message.status == MessageStatus.receiving;
+    final isTransferring =
+        message.status == MessageStatus.sending ||
+        message.status == MessageStatus.receiving;
 
     return GestureDetector(
       onTap: () => onImageTap?.call(message.imageUrl ?? ''),
@@ -370,7 +373,7 @@ class MessageBubble extends ConsumerWidget {
         final isCancelled = progress.status.name == 'cancelled';
         final isFailed = progress.status.name == 'failed';
         final isCompressing = progress.status.name == 'compressing';
-        
+
         if (progress.status.name == 'sent') return const SizedBox.shrink();
 
         return Container(
@@ -390,22 +393,39 @@ class MessageBubble extends ConsumerWidget {
                         color: Colors.white,
                       ),
                       if (isCompressing)
-                        const Icon(Icons.compress, color: Colors.white, size: 20)
+                        const Icon(
+                          Icons.compress,
+                          color: Colors.white,
+                          size: 20,
+                        )
                       else
                         IconButton(
-                          icon: const Icon(Icons.close, color: Colors.white, size: 20),
+                          icon: const Icon(
+                            Icons.close,
+                            color: Colors.white,
+                            size: 20,
+                          ),
                           onPressed: () {
-                            ref.read(chatRepositoryProvider).cancelUpload(message.id);
+                            ref
+                                .read(chatRepositoryProvider)
+                                .cancelUpload(message.id);
                           },
                         ),
                     ],
                   ),
                 const SizedBox(height: 8),
                 Text(
-                  isCancelled ? 'Cancelled' : 
-                  isFailed ? 'Failed' : 
-                  isCompressing ? 'Compressing...' : '$pct%',
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  isCancelled
+                      ? 'Cancelled'
+                      : isFailed
+                      ? 'Failed'
+                      : isCompressing
+                      ? 'Compressing...'
+                      : '$pct%',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ],
             ).animate().fadeIn(duration: 200.ms),
@@ -820,151 +840,255 @@ class MessageBubble extends ConsumerWidget {
     return "${d.inMinutes}:$twoDigitSeconds";
   }
 
+  IconData _getFileIcon(String? fileName, String? type) {
+    final ext = fileName?.split('.').last.toLowerCase() ?? '';
+    if (['pdf'].contains(ext)) return Icons.picture_as_pdf;
+    if (['doc', 'docx', 'txt', 'rtf'].contains(ext)) return Icons.description;
+    if (['zip', 'rar', '7z', 'tar', 'gz'].contains(ext)) return Icons.archive;
+    if (['mp3', 'wav', 'm4a', 'aac', 'ogg'].contains(ext))
+      return Icons.audio_file;
+    if (['mp4', 'mkv', 'avi', 'mov'].contains(ext)) return Icons.video_file;
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(ext)) return Icons.image;
+    if (['apk'].contains(ext)) return Icons.android;
+    return Icons.insert_drive_file;
+  }
+
+  Future<void> _handleFileTap(BuildContext context, Message message) async {
+    final url = message.fileUrl;
+    if (url == null || url.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'جاري نقل/تحميل الملف... يرجى الانتظار حتى اكتمال النقل',
+          ),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    final cleanPath = url.replaceFirst('file://', '');
+    final file = File(cleanPath);
+
+    if (!file.existsSync()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('الملف غير موجود في ذاكرة الهاتف المحلية'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    try {
+      final result = await OpenFilex.open(file.path);
+      if (result.type != ResultType.done) {
+        if (context.mounted) {
+          // Fallback: If no app can open it directly, offer Share / Save
+          await Share.shareXFiles([
+            XFile(file.path),
+          ], text: message.fileName ?? 'ملف');
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        await Share.shareXFiles([
+          XFile(file.path),
+        ], text: message.fileName ?? 'ملف');
+      }
+    }
+  }
+
   Widget _buildFile(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final isTransferring = message.status == MessageStatus.sending ||
-                           message.status == MessageStatus.receiving;
+    final uploadStateAsync = ref.watch(uploadProgressProvider(message.id));
+    final double? liveProgress = uploadStateAsync.value?.progress;
+    final double? progressVal = liveProgress ?? message.transferProgress;
 
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 280),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: isMe
-            ? theme.colorScheme.primary.withOpacity(0.1)
-            : (isDark
-                  ? theme.colorScheme.surfaceVariant
-                  : theme.colorScheme.surfaceContainerHighest),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(10),
+    final bool isSending = message.status == MessageStatus.sending;
+    final bool isReceiving = message.status == MessageStatus.receiving;
+    final bool isTransferring =
+        isSending || isReceiving || (progressVal != null && progressVal < 1.0);
+    final bool isFailed = message.status == MessageStatus.failed;
+    final bool isReady =
+        message.fileUrl != null &&
+        message.fileUrl!.isNotEmpty &&
+        !isTransferring &&
+        !isFailed;
+
+    final iconData = _getFileIcon(message.fileName, message.type);
+
+    return InkWell(
+      onTap: () => _handleFileTap(context, message),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 280),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isMe
+              ? theme.colorScheme.primary.withValues(alpha: 0.12)
+              : (isDark
+                    ? theme.colorScheme.surfaceContainerHighest
+                    : theme.colorScheme.surfaceContainerHighest.withValues(
+                        alpha: 0.5,
+                      )),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isFailed
+                ? Colors.red.withValues(alpha: 0.4)
+                : (isReady
+                      ? theme.colorScheme.primary.withValues(alpha: 0.2)
+                      : Colors.transparent),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: isFailed
+                            ? Colors.red.withValues(alpha: 0.1)
+                            : theme.colorScheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        isFailed ? Icons.error_outline : iconData,
+                        color: isFailed
+                            ? Colors.red
+                            : theme.colorScheme.primary,
+                        size: 24,
+                      ),
+                    ),
+                    if (isTransferring)
+                      SizedBox(
+                        width: 44,
+                        height: 44,
+                        child: CircularProgressIndicator(
+                          value: (progressVal != null && progressVal > 0)
+                              ? progressVal
+                              : null,
+                          strokeWidth: 3,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            theme.colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-                child: Icon(
-                  Icons.insert_drive_file,
-                  color: theme.colorScheme.primary,
-                  size: 24,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        message.fileName ?? 'ملف',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: isMe
+                              ? theme.colorScheme.onPrimary
+                              : theme.colorScheme.onSurface,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Text(
+                            message.fileSize != null
+                                ? '${(message.fileSize! / 1024).toStringAsFixed(1)} KB'
+                                : 'ملف',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: isMe
+                                  ? theme.colorScheme.onPrimary.withValues(
+                                      alpha: 0.7,
+                                    )
+                                  : theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          if (isReady) ...[
+                            const SizedBox(width: 6),
+                            Icon(
+                              Icons.touch_app,
+                              size: 12,
+                              color: theme.colorScheme.primary,
+                            ),
+                            const SizedBox(width: 2),
+                            Text(
+                              'انقر للفتح',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: theme.colorScheme.primary,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (isTransferring) ...[
+              const SizedBox(height: 10),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: (progressVal != null && progressVal > 0)
+                      ? progressVal
+                      : null,
+                  minHeight: 4,
+                  backgroundColor: theme.colorScheme.surface.withValues(
+                    alpha: 0.3,
+                  ),
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    isMe
+                        ? theme.colorScheme.onPrimary
+                        : theme.colorScheme.primary,
+                  ),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      message.fileName ?? 'ملف',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: isMe
-                            ? theme.colorScheme.onPrimary
-                            : theme.colorScheme.onSurface,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+              const SizedBox(height: 4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    isSending ? 'جاري الإرسال...' : 'جاري التحميل...',
+                    style: const TextStyle(fontSize: 10),
+                  ),
+                  Text(
+                    '${((progressVal ?? 0.0) * 100).toInt()}%',
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      message.fileSize != null
-                          ? '${(message.fileSize! / 1024).toStringAsFixed(1)} KB'
-                          : 'ملف',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: isMe
-                            ? theme.colorScheme.onPrimary.withOpacity(0.7)
-                            : theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
+                  ),
+                ],
+              ),
+            ],
+            if (isFailed) ...[
+              const SizedBox(height: 4),
+              const Text(
+                'فشل نقل الملف',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.red,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ],
-          ),
-          if (isTransferring) ...[
-            const SizedBox(height: 12),
-            Consumer(
-              builder: (context, ref, child) {
-                final uploadStateAsync = ref.watch(uploadProgressProvider(message.id));
-                return uploadStateAsync.when(
-                  data: (progress) {
-                    final pct = (progress.progress * 100).toInt();
-                    final speedKB = progress.speed / 1024;
-                    final isCancelled = progress.status.name == 'cancelled';
-                    final isFailed = progress.status.name == 'failed';
-                    
-                    if (progress.status.name == 'sent') return const SizedBox.shrink();
-                    
-                    return Column(
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(4),
-                                child: LinearProgressIndicator(
-                                  value: isCancelled || isFailed ? 0 : (progress.progress > 0 ? progress.progress : null),
-                                  backgroundColor: theme.colorScheme.surface.withOpacity(0.3),
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    isCancelled || isFailed ? Colors.red :
-                                    (isMe ? theme.colorScheme.onPrimary : theme.colorScheme.primary),
-                                  ),
-                                  minHeight: 4,
-                                ),
-                              ),
-                            ),
-                            if (!isCancelled && !isFailed)
-                              IconButton(
-                                icon: Icon(Icons.close, size: 16, color: isMe ? theme.colorScheme.onPrimary : theme.colorScheme.primary),
-                                onPressed: () {
-                                  ref.read(chatRepositoryProvider).cancelUpload(message.id);
-                                },
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              isCancelled ? 'Cancelled' :
-                              isFailed ? 'Failed' :
-                              message.status == MessageStatus.sending
-                                  ? 'جاري الإرسال... (${speedKB.toStringAsFixed(1)} KB/s)'
-                                  : 'جاري التحميل... (${speedKB.toStringAsFixed(1)} KB/s)',
-                              style: TextStyle(fontSize: 10, color: isCancelled || isFailed ? Colors.red : null),
-                            ),
-                            if (!isCancelled && !isFailed && progress.progress > 0)
-                              Text(
-                                '$pct%',
-                                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
-                              ),
-                          ],
-                        ),
-                      ],
-                    );
-                  },
-                  loading: () => LinearProgressIndicator(
-                    backgroundColor: theme.colorScheme.surface.withOpacity(0.3),
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      isMe ? theme.colorScheme.onPrimary : theme.colorScheme.primary,
-                    ),
-                  ),
-                  error: (_, __) => const Text('Error', style: TextStyle(color: Colors.red)),
-                );
-              },
-            ),
           ],
-        ],
+        ),
       ),
     );
   }

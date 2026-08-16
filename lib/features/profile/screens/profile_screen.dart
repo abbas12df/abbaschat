@@ -133,7 +133,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   // --- Privacy Updates Removed (Migrated to PrivacySettingsScreen) ---
 
   String _getIdentityFingerprint(String? publicKey) {
-    if (publicKey == null || publicKey.trim().isEmpty) return 'غير متاح (لا يوجد مفتاح)';
+    if (publicKey == null || publicKey.trim().isEmpty)
+      return 'غير متاح (لا يوجد مفتاح)';
     final canonicalKey = publicKey.replaceAll(RegExp(r'\s+'), '');
     var bytes = utf8.encode(canonicalKey);
     var digest = sha256.convert(bytes);
@@ -183,14 +184,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   background: Stack(
                     fit: StackFit.expand,
                     children: [
-                      // Loading Overlay
-                      if (_isLoading) const LinearProgressIndicator(),
                       // Blurred Background or Gradient
                       Container(
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             colors: [
-                              theme.primaryColor.withOpacity(0.1),
+                              theme.primaryColor.withValues(alpha: 0.1),
                               theme.scaffoldBackgroundColor,
                             ],
                             begin: Alignment.topCenter,
@@ -198,45 +197,61 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           ),
                         ),
                       ),
+                      // Loading Overlay (positioned at top)
+                      if (_isLoading)
+                        const Positioned(
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          child: LinearProgressIndicator(),
+                        ),
                       Center(
-                        child: GestureDetector(
-                          onTap: () => _updateProfileImage(), // Tap to edit
-                          child: Hero(
-                            tag: 'profile_pic_${_currentUser!.uid}',
-                            child: Container(
-                              width: 140,
-                              height: 140,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: theme.primaryColor,
-                                  width: 3,
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: theme.primaryColor.withOpacity(0.3),
-                                    blurRadius: 20,
-                                    spreadRadius: 2,
+                        child: Semantics(
+                          label: 'صورة الملف الشخصي. اضغط لتغيير الصورة',
+                          button: true,
+                          child: GestureDetector(
+                            onTap: () => _updateProfileImage(),
+                            child: Hero(
+                              tag: 'profile_pic_${_currentUser!.uid}',
+                              child: Container(
+                                width: 140,
+                                height: 140,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: theme.primaryColor,
+                                    width: 3,
                                   ),
-                                ],
-                              ),
-                              child: CircleAvatar(
-                                radius: 70,
-                                backgroundImage: _getProfileImageProvider(
-                                  _currentUser!.photoURL,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: theme.primaryColor.withValues(
+                                        alpha: 0.3,
+                                      ),
+                                      blurRadius: 20,
+                                      spreadRadius: 2,
+                                    ),
+                                  ],
                                 ),
-                                backgroundColor: Theme.of(
-                                  context,
-                                ).colorScheme.surfaceVariant,
-                                child: _currentUser!.photoURL == null
-                                    ? Icon(
-                                        Icons.person,
-                                        size: 70,
-                                        color:
-                                            Theme.of(context).iconTheme.color ??
-                                            Colors.grey,
-                                      )
-                                    : null,
+                                child: CircleAvatar(
+                                  radius: 70,
+                                  backgroundImage: _getProfileImageProvider(
+                                    _currentUser!.photoURL,
+                                  ),
+                                  backgroundColor: Theme.of(
+                                    context,
+                                  ).colorScheme.surfaceVariant,
+                                  child: _currentUser!.photoURL == null
+                                      ? Icon(
+                                          Icons.person,
+                                          size: 70,
+                                          color:
+                                              Theme.of(
+                                                context,
+                                              ).iconTheme.color ??
+                                              Colors.grey,
+                                        )
+                                      : null,
+                                ),
                               ),
                             ),
                           ),
@@ -246,23 +261,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         duration: 600.ms,
                       ),
 
-                      // Edit Icon Overlay
-                      Positioned(
-                        bottom: 60,
-                        right: MediaQuery.of(context).size.width / 2 - 70,
-                        child: CircleAvatar(
-                          radius: 18,
-                          backgroundColor: theme.cardColor,
-                          child: IconButton(
-                            icon: Icon(
-                              Icons.camera_alt,
-                              size: 18,
-                              color: theme.primaryColor,
+                      // Edit Icon Overlay – RTL-safe positioning via Align
+                      Align(
+                        alignment: const Alignment(0.22, 0.45),
+                        child: Semantics(
+                          label: 'تغيير الصورة',
+                          button: true,
+                          child: CircleAvatar(
+                            radius: 22,
+                            backgroundColor: theme.cardColor,
+                            child: IconButton(
+                              icon: Icon(
+                                Icons.camera_alt,
+                                size: 18,
+                                color: theme.primaryColor,
+                              ),
+                              onPressed: _updateProfileImage,
+                              tooltip: 'تغيير الصورة',
+                              padding: EdgeInsets.zero,
                             ),
-                            onPressed: _updateProfileImage,
-                            padding: EdgeInsets.zero,
-                          ),
-                        ).animate().fadeIn(delay: 400.ms),
+                          ).animate().fadeIn(delay: 400.ms),
+                        ),
                       ),
                     ],
                   ),
@@ -299,16 +318,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
-                              _currentUser!.displayName,
-                              style: theme.textTheme.headlineMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color:
-                                    Theme.of(context).brightness ==
-                                        Brightness.dark
-                                    ? Colors.white
-                                    : null,
+                            Flexible(
+                              child: Text(
+                                _currentUser!.displayName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.headlineMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color:
+                                      Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? Colors.white
+                                      : null,
+                                ),
                               ),
                             ),
                             const SizedBox(width: 8),
@@ -380,42 +404,48 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       const SizedBox(height: 40),
 
                       // --- Logout Section ---
-                      Card(
-                            elevation: 0,
-                            color: theme.colorScheme.errorContainer.withOpacity(
-                              0.1,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              side: BorderSide(
-                                color: theme.colorScheme.error.withOpacity(0.2),
-                              ),
-                            ),
-                            child: ListTile(
-                              leading: Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: theme.colorScheme.errorContainer,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Icon(
-                                  Icons.logout,
-                                  color: theme.colorScheme.error,
-                                ),
-                              ),
-                              title: Text(
-                                'تسجيل الخروج',
-                                style: TextStyle(
-                                  color: theme.colorScheme.error,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              onTap: _confirmLogout,
-                            ),
-                          )
-                          .animate()
-                          .fadeIn(delay: 400.ms)
-                          .slideY(begin: 0.5, end: 0),
+                      Semantics(
+                        label: 'تسجيل الخروج',
+                        button: true,
+                        child:
+                            Card(
+                                  elevation: 0,
+                                  color: theme.colorScheme.errorContainer
+                                      .withValues(alpha: 0.1),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                    side: BorderSide(
+                                      color: theme.colorScheme.error.withValues(
+                                        alpha: 0.2,
+                                      ),
+                                    ),
+                                  ),
+                                  child: ListTile(
+                                    leading: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: theme.colorScheme.errorContainer,
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Icon(
+                                        Icons.logout,
+                                        color: theme.colorScheme.error,
+                                      ),
+                                    ),
+                                    title: Text(
+                                      'تسجيل الخروج',
+                                      style: TextStyle(
+                                        color: theme.colorScheme.error,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    onTap: _confirmLogout,
+                                  ),
+                                )
+                                .animate()
+                                .fadeIn(delay: 400.ms)
+                                .slideY(begin: 0.5, end: 0),
+                      ),
 
                       const SizedBox(height: 40),
 
@@ -424,7 +454,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         'Secure ID: ${_currentUser!.uid.substring(0, 8)}...',
                         style: theme.textTheme.bodySmall,
                       ),
-                      const SizedBox(height: 50),
+                      SizedBox(
+                        height: MediaQuery.of(context).viewPadding.bottom + 20,
+                      ),
                     ],
                   ),
                 ),
@@ -440,7 +472,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Widget _buildSectionHeader(String title) {
     return Align(
-      alignment: Alignment.centerRight,
+      alignment: AlignmentDirectional.centerEnd,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Text(
@@ -491,7 +523,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     ).animate().fadeIn(delay: 250.ms);
   }
 
-  // ignore: unused_element
   Widget _buildProfileOption(
     BuildContext context, {
     required IconData icon,
@@ -512,8 +543,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         subtitle: Text(subtitle, style: Theme.of(context).textTheme.bodyMedium),
         onTap: onTap,
         trailing: Icon(
-          Icons.arrow_forward_ios,
-          size: 16,
+          Icons.chevron_right,
+          size: 20,
           color: Theme.of(context).iconTheme.color,
         ),
       ),
@@ -522,12 +553,35 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Widget _buildIdentityCard(ThemeData theme) {
     return FutureBuilder<String?>(
-      future: CryptoService().getPrivateKeyPem().then((_) => CryptoService().getPublicKeyPem()), // Ensures service is initialized
+      future: CryptoService().getPrivateKeyPem().then(
+        (_) => CryptoService().getPublicKeyPem(),
+      ),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Center(child: CircularProgressIndicator()),
+          );
         }
-        
+
+        if (snapshot.hasError) {
+          return Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: theme.cardColor,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Theme.of(context).dividerColor),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.error_outline, color: theme.colorScheme.error),
+                const SizedBox(width: 12),
+                const Expanded(child: Text('تعذر تحميل البصمة التعريفية')),
+              ],
+            ),
+          );
+        }
+
         final publicKey = snapshot.data;
         final fingerprint = _getIdentityFingerprint(publicKey);
 
@@ -549,13 +603,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             children: [
               Row(
                 children: [
-                  Icon(Icons.fingerprint, color: Theme.of(context).iconTheme.color),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'البصمة التعريفية',
-                    style: TextStyle(fontWeight: FontWeight.bold),
+                  Icon(
+                    Icons.fingerprint,
+                    color: Theme.of(context).iconTheme.color,
                   ),
-                  const Spacer(),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'البصمة التعريفية',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
                   Icon(
                     Icons.shield_outlined,
                     color: Theme.of(context).iconTheme.color,
@@ -571,11 +629,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   color: theme.scaffoldBackgroundColor,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Text(
+                child: SelectableText(
                   fingerprint,
                   textAlign: TextAlign.center,
                   style: const TextStyle(
-                    fontFamily: 'Courier', // Monospace for keys
+                    fontFamily: 'Courier',
                     fontWeight: FontWeight.bold,
                     letterSpacing: 1.5,
                   ),
@@ -588,9 +646,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   OutlinedButton.icon(
                     onPressed: () {
                       Clipboard.setData(ClipboardData(text: fingerprint));
-                      HapticFeedback.lightImpact(); // Feedback
+                      HapticFeedback.lightImpact();
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('تم نسخ البصمة التعريفية')),
+                        const SnackBar(
+                          content: Text('تم نسخ البصمة التعريفية'),
+                        ),
                       );
                     },
                     icon: const Icon(Icons.copy, size: 16),

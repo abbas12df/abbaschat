@@ -627,36 +627,38 @@ class _GroupDetailsScreenState extends ConsumerState<GroupDetailsScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
-                          _buildQuickAction(
-                            icon:
-                                ref
-                                    .watch(localStorageServiceProvider)
-                                    .isMuted(myId!, widget.roomId)
-                                ? Icons.notifications_off
-                                : Icons.notifications_active,
-                            label:
-                                ref
-                                    .watch(localStorageServiceProvider)
-                                    .isMuted(myId, widget.roomId)
-                                ? 'مكتوم'
-                                : 'تنبيهات',
-                            onTap: () async {
-                              final isMuted = ref
-                                  .read(localStorageServiceProvider)
-                                  .isMuted(myId, widget.roomId);
-                              await ref
-                                  .read(chatRepositoryProvider)
-                                  .toggleMute(widget.roomId, !isMuted);
-                              setState(() {});
+                          Builder(
+                            builder: (context) {
+                              final isMuted =
+                                  myId != null &&
+                                  (ref
+                                          .watch(
+                                            chatMuteProvider((
+                                              userId: myId,
+                                              roomId: widget.roomId,
+                                            )),
+                                          )
+                                          .value ??
+                                      ref
+                                          .read(localStorageServiceProvider)
+                                          .isMuted(myId, widget.roomId));
+                              return _buildQuickAction(
+                                icon: isMuted
+                                    ? Icons.notifications_off
+                                    : Icons.notifications_active,
+                                label: isMuted ? 'مكتوم' : 'تنبيهات',
+                                onTap: () async {
+                                  if (myId == null) return;
+                                  await ref
+                                      .read(chatRepositoryProvider)
+                                      .toggleMute(widget.roomId, !isMuted);
+                                },
+                                color: isMuted
+                                    ? Colors.orange
+                                    : theme.iconTheme.color ??
+                                          theme.primaryColor,
+                              );
                             },
-                            color:
-                                (myId != null
-                                    ? ref
-                                        .watch(localStorageServiceProvider)
-                                        .isMuted(myId, widget.roomId)
-                                    : false)
-                                ? Colors.orange
-                                : theme.iconTheme.color ?? theme.primaryColor,
                           ),
                           if (canAddMembers)
                             _buildQuickAction(
@@ -749,7 +751,7 @@ class _GroupDetailsScreenState extends ConsumerState<GroupDetailsScreen> {
                               color: Colors.green,
                               size: 20,
                             ),
-                            onTap: () {}, // Info dialog?
+                            onTap: null, // Info dialog?
                           ),
                         ],
                       ),

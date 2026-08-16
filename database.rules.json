@@ -1,0 +1,54 @@
+{
+  "rules": {
+    "relay_messages": {
+      "$receiverId": {
+        ".read": "auth != null && auth.uid == $receiverId",
+        "$messageId": {
+          ".write": "auth != null && ((!data.exists() && newData.exists() && newData.child('sender_id').val() == auth.uid && newData.child('payload').exists() && newData.child('timestamp').exists()) || (data.exists() && !newData.exists() && auth.uid == $receiverId))",
+          ".validate": "newData.child('sender_id').isString() && newData.child('sender_id').val() == auth.uid && newData.child('payload').exists() && newData.child('timestamp').isNumber()"
+        }
+      }
+    },
+
+    "users_public_keys": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && auth.uid == $uid",
+        ".validate": "newData.isString() && newData.val().length > 0 && newData.val().beginsWith('-----BEGIN')"
+      }
+    },
+
+    "delivery_receipts": {
+      "$senderId": {
+        ".read": "auth != null && auth.uid == $senderId",
+        "$messageId": {
+          ".write": "auth != null && !data.exists() && newData.exists() && newData.child('reader_id').val() == auth.uid && newData.child('timestamp').exists()",
+          ".validate": "newData.child('reader_id').isString() && newData.child('reader_id').val() == auth.uid && newData.child('timestamp').isNumber()"
+        }
+      }
+    },
+
+    "status": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && auth.uid == $uid",
+        ".validate": "!newData.exists() || (newData.child('state').isString() && (newData.child('state').val() == 'online' || newData.child('state').val() == 'offline') && newData.child('last_changed').isNumber())"
+      }
+    },
+
+    "typing": {
+      ".read": "auth != null",
+      "$roomId": {
+        "$uid": {
+          ".write": "auth != null && auth.uid == $uid",
+          ".validate": "!newData.exists() || newData.isBoolean()"
+        }
+      }
+    },
+
+    "$other": {
+      ".read": false,
+      ".write": false
+    }
+  }
+}

@@ -14,6 +14,8 @@ import 'core/security/secure_storage_service.dart';
 import 'features/settings/services/settings_service.dart';
 import 'core/security/app_lock_manager.dart';
 
+import 'core/security/screen_security_service.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   if (Firebase.apps.isEmpty) {
@@ -32,6 +34,9 @@ void main() async {
   final secureStorage = SecureStorageService();
   final localStorage = LocalStorageService(secureStorage);
   await localStorage.init();
+
+  // Apply saved global screenshot protection
+  await ScreenSecurityService.applyGlobalProtection();
 
   // Initialize Identity Keys (RSA)
   await CryptoService().initializeKeys();
