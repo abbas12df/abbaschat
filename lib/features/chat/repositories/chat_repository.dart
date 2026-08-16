@@ -699,12 +699,15 @@ class ChatRepository {
           final myId = currentUser.uid;
 
           // Update Local: Enforced Remote Protection
-          final room = _local.getConversation(myId, roomId);
-          if (room != null) {
-            // We map this to isRemoteProtectionEnforced
-            room['isRemoteProtectionEnforced'] = enabled;
-            await _local.updateConversation(myId, roomId, room);
-          }
+          final room = _local.getConversation(myId, roomId) ??
+              <String, dynamic>{
+                'id': roomId,
+                'unreadCount': 0,
+                'lastMessage': '',
+                'lastMessageTime': DateTime.now().millisecondsSinceEpoch,
+              };
+          room['isRemoteProtectionEnforced'] = enabled;
+          await _local.updateConversation(myId, roomId, room);
 
           // ACK and Delete
           await _relay.sendAck(senderId: senderId, messageId: messageId);
