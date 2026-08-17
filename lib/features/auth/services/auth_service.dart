@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
@@ -168,7 +169,11 @@ class AuthService {
         print('DEBUG: Failed to set offline status on logout: $e');
       }
 
-      await FirebaseDatabase.instance.goOffline();
+      if (!kIsWeb &&
+          (defaultTargetPlatform == TargetPlatform.android ||
+              defaultTargetPlatform == TargetPlatform.iOS)) {
+        await FirebaseDatabase.instance.goOffline();
+      }
       await GoogleSignIn().signOut();
     } catch (_) {}
     await _auth.signOut();
@@ -253,7 +258,8 @@ class AuthService {
         // Note: This is a workaround - ideally we'd use updatePassword if available
         throw FirebaseAuthException(
           code: 'link-failed',
-          message: 'Unable to link password. Please try again or contact support.',
+          message:
+              'Unable to link password. Please try again or contact support.',
         );
       }
       rethrow;

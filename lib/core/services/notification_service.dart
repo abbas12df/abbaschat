@@ -28,6 +28,11 @@ class NotificationService {
 
   Future<void> initialize() async {
     if (_isInitialized) return;
+    
+    if (kIsWeb || (defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS)) {
+      _isInitialized = true;
+      return;
+    }
 
     // 1. Request Permissions
     await _requestPermission();
@@ -137,6 +142,7 @@ class NotificationService {
 
   // Get and Save Token
   Future<void> saveTokenToDatabase() async {
+    if (kIsWeb || (defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS)) return;
     String? token = await _firebaseMessaging.getToken();
     if (token == null) return;
 

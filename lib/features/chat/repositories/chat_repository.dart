@@ -333,6 +333,7 @@ class ChatRepository {
     if (uid == null) return;
 
     // Ensure connection is established when we have a user
+    if (!kIsWeb && defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS) return;
     FirebaseDatabase.instance.goOnline();
 
     final database = FirebaseDatabase.instance;
@@ -370,6 +371,9 @@ class ChatRepository {
   }
 
   Stream<Map<String, dynamic>> getUserPresence(String uid) {
+    if (!kIsWeb && defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS) {
+      return const Stream.empty();
+    }
     return FirebaseDatabase.instance.ref('status/$uid').onValue.map((event) {
       if (event.snapshot.value == null) return <String, dynamic>{};
       return Map<String, dynamic>.from(event.snapshot.value as Map);
@@ -1299,10 +1303,9 @@ class ChatRepository {
 
           // Update local messages: Add senderId to 'readBy' for messages in this room
           // We assume this means "User has seen the conversation up to now"
-          await _local.markMessagesAsReadBy(
+          await _local.markMessagesAsReadByOther(
             currentUser.uid,
             targetRoomId,
-            senderId,
           );
 
           // Force UI update by explicitly updating the last message
@@ -3019,6 +3022,7 @@ class ChatRepository {
     }
 
     try {
+      if (!kIsWeb && defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS) return;
       final ref = FirebaseDatabase.instance.ref('typing/$roomId/$uid');
       if (isTyping) {
         // Set to true, auto-remove on disconnect to prevent stuck "typing"
@@ -3035,6 +3039,9 @@ class ChatRepository {
   }
 
   Stream<List<String>> getTypingUsers(String roomId) {
+    if (!kIsWeb && defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS) {
+      return const Stream.empty();
+    }
     return FirebaseDatabase.instance.ref('typing/$roomId').onValue.map((event) {
       if (event.snapshot.value == null) return <String>[];
       final data = Map<String, dynamic>.from(event.snapshot.value as Map);

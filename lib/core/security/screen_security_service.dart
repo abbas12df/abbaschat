@@ -8,6 +8,7 @@ class ScreenSecurityService {
 
   /// Applies global screenshot protection based on saved Hive preference.
   static Future<void> applyGlobalProtection() async {
+    if (kIsWeb || (defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS)) return;
     try {
       final isEnabled = await isGlobalProtectionEnabled();
       if (isEnabled) {
@@ -64,21 +65,21 @@ class ScreenSecurityService {
     }
   }
 
-  /// Enables screenshot & screen recording prevention AND app switcher data protection.
+  /// Enables protection for the current screen only.
   static Future<void> enableProtection() async {
+    if (kIsWeb || (defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS)) return;
     try {
       await ScreenProtector.preventScreenshotOn();
-      await ScreenProtector.protectDataLeakageOn();
     } catch (e) {
       debugPrint('Error enabling screen protection: $e');
     }
   }
 
-  /// Disables screenshot & screen recording prevention AND app switcher data protection.
+  /// Disables protection for the current screen.
   static Future<void> disableProtection() async {
+    if (kIsWeb || (defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS)) return;
     try {
       await ScreenProtector.preventScreenshotOff();
-      await ScreenProtector.protectDataLeakageOff();
     } catch (e) {
       debugPrint('Error disabling screen protection: $e');
     }

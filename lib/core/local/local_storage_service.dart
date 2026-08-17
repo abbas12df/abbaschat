@@ -579,8 +579,9 @@ class LocalStorageService {
           if (val != null) {
             final msg = Map<String, dynamic>.from(val);
             // If message IS from me, and not read, mark read (double check)
-            if (msg['senderId'] == userId && (msg['isRead'] == false)) {
+            if (msg['senderId'] == userId && (msg['isRead'] == false || msg['status'] != 'read')) {
               msg['isRead'] = true;
+              msg['status'] = 'read';
               await box.put(key, msg);
             }
           }
@@ -724,46 +725,7 @@ class LocalStorageService {
     });
   }
 
-  Future<void> markMessagesAsReadBy(
-    String myId,
-    String roomId,
-    String readerId,
-  ) async {
-    // Safety: Don't open box if conversation is deleted
-    if (!Hive.box('conversations_$myId').containsKey(roomId)) {
-      return;
-    }
 
-    final box = await Hive.openBox('messages_${myId}_$roomId');
-    final keys = box.keys
-        .toList(); // Assuming keys are time-sorted or insert-order
-
-    // We iterate backwards (newest first).
-    // If we find a message ALREADY read by this user, we can likely stop?
-    // Not necessarily (gaps?), but for typical chat usage yes.
-    // However, to be robust, let's just check the last 50 messages.
-    // Or just all unread ones?
-
-    for (var i = keys.length - 1; i >= 0; i--) {
-      final key = keys[i];
-      final msg = Map<String, dynamic>.from(box.get(key) as Map);
-
-      final List<String> readBy = List<String>.from(msg['readBy'] ?? []);
-      if (!readBy.contains(readerId)) {
-        readBy.add(readerId);
-        msg['readBy'] = readBy;
-        msg['isRead'] = true; // Fix: Mark as read so checkmarks update
-        await box.put(key, msg);
-      } else {
-        // If we hit a message already read by them, and we assume sequential reading,
-        // we could optimize and break.
-        // Let's break after 10 consecutive "already read" to be safe.
-        // For MVP, just breaking on first is risky if they read out of order (unlikely in chat UI).
-        // Let's break immediately.
-        break;
-      }
-    }
-  }
 
   /// Clears all messages for a user by deleting all message boxes
   Future<void> clearAllMessages(String userId) async {
