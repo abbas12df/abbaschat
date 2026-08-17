@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:googleapis_auth/auth_io.dart';
 import 'package:http/http.dart' as http;
 import 'package:firebase_core/firebase_core.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import '../security/secure_service_account.dart';
 
 class PushNotificationService {
@@ -59,32 +58,6 @@ class PushNotificationService {
     }
   }
 
-  /// SECURE PATH: server-side Cloud Function.
-  /// The service account lives only on Google's servers — nothing secret in the app.
-  Future<bool> _sendViaCloudFunction({
-    required String targetToken,
-    required String title,
-    required String body,
-    required Map<String, dynamic> data,
-  }) async {
-    try {
-      final callable = FirebaseFunctions.instance.httpsCallable('sendPushNotification');
-      // Serialize the data payload to strings only (Cloud Functions requirement).
-      final stringData = data.map((k, v) => MapEntry(k, v?.toString() ?? ''));
-      await callable.call(<String, dynamic>{
-        'targetToken': targetToken,
-        'title': title,
-        'body': body,
-        'data': stringData,
-      });
-      debugPrint('Push notification sent via Cloud Function.');
-      return true;
-    } catch (e) {
-      debugPrint('Cloud Function push failed (falling back to legacy): $e');
-      return false;
-    }
-  }
-
   Future<void> init() async {
     if (_client != null) return;
     try {
@@ -113,16 +86,7 @@ class PushNotificationService {
     );
     if (sentViaRelay) return;
 
-    // 2. Alternative secure path: Cloud Function (requires Blaze plan).
-    final sentSecurely = await _sendViaCloudFunction(
-      targetToken: targetToken,
-      title: title,
-      body: body,
-      data: data,
-    );
-    if (sentSecurely) return;
-
-    // 3. LEGACY FALLBACK (transitional): direct FCM with embedded credentials.
+    // 2. LEGACY FALLBACK (transitional): direct FCM with embedded credentials.
     //    Remove SecureServiceAccount + this path once the relay is deployed.
     if (_client == null) {
       await init();
