@@ -1,6 +1,10 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'login_screen.dart';
+import 'register_screen.dart';
+import '../../../core/widgets/nisaba_button.dart';
+import '../../../core/theme/nisaba_theme.dart';
 
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
@@ -13,7 +17,7 @@ class WelcomeScreen extends StatelessWidget {
     return Scaffold(
       body: Stack(
         children: [
-          // 1. Dynamic Background
+          // Dynamic gradient background
           Positioned.fill(
             child: Container(
               decoration: BoxDecoration(
@@ -21,150 +25,173 @@ class WelcomeScreen extends StatelessWidget {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: isDark
-                      ? [const Color(0xFF1A1A2E), const Color(0xFF16213E)]
-                      : [const Color(0xFFFDFBF7), const Color(0xFFE8F4F8)],
+                      ? [
+                          theme.colorScheme.surface,
+                          theme.colorScheme.primary.withValues(alpha: 0.1),
+                        ]
+                      : [
+                          theme.colorScheme.surface,
+                          theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
+                        ],
                 ),
               ),
             ),
           ),
 
-          // 2. Deco Elements (Subtle Glows)
-          if (!isDark)
-            Positioned(
-              top: -100,
-              right: -50,
-              child: Container(
-                width: 300,
-                height: 300,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: theme.colorScheme.primary.withValues(alpha: 0.05),
-                ),
+          // Decorative glowing orb (top right)
+          Positioned(
+            top: -50,
+            right: -50,
+            child: Container(
+              width: 250,
+              height: 250,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: theme.colorScheme.primary.withValues(alpha: 0.15),
               ),
             ),
+          )
+              .animate(onPlay: (controller) => controller.repeat(reverse: true))
+              .scaleXY(end: 1.1, duration: 4.seconds, curve: Curves.easeInOut),
 
-          // 3. Main Content
+          // Decorative glowing orb (bottom left)
+          Positioned(
+            bottom: 100,
+            left: -100,
+            child: Container(
+              width: 300,
+              height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: theme.colorScheme.secondary.withValues(alpha: 0.15),
+              ),
+            ),
+          )
+              .animate(onPlay: (controller) => controller.repeat(reverse: true))
+              .scaleXY(end: 1.15, duration: 5.seconds, curve: Curves.easeInOut),
+
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 32.0,
-                vertical: 24.0,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 24.0),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const Spacer(flex: 3),
 
-                  // Logo with Pulse Effeect
+                  // App Logo
                   Hero(
-                        tag: 'app_logo',
-                        child: Image.asset(
-                          'assets/images/nisaba_chroma_final.png',
-                          width: 250,
-                          fit: BoxFit.contain,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Icon(
-                              Icons.chat_bubble_rounded,
-                              size: 150,
-                              color: theme.colorScheme.primary,
-                            );
-                          },
-                        ),
-                      )
+                    tag: 'app_logo',
+                    child: Container(
+                      padding: const EdgeInsets.all(28),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: theme.colorScheme.surface,
+                        boxShadow: NisabaTheme.primaryGlow(theme.colorScheme.primary),
+                      ),
+                      child: Image.asset(
+                        'assets/images/app_logo_transparent.png',
+                        width: 120,
+                        height: 120,
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Icon(
+                            Icons.chat_bubble_rounded,
+                            size: 100,
+                            color: theme.colorScheme.primary,
+                          );
+                        },
+                      ),
+                    ),
+                  )
                       .animate()
                       .fadeIn(duration: 600.ms)
-                      .scale(delay: 200.ms, curve: Curves.easeOutBack)
-                      .shimmer(
-                        delay: 1.seconds,
-                        duration: 1200.ms,
-                        color: Colors.white.withValues(alpha: 0.4),
-                      ),
+                      .scale(delay: 200.ms, curve: Curves.easeOutBack, duration: 800.ms),
 
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 48),
 
-                  // App Name
+                  // App Title
                   Text(
                     'Nisaba',
-                    style: theme.textTheme.displayMedium?.copyWith(
-                      fontWeight: FontWeight.w900,
+                    style: theme.textTheme.displayLarge?.copyWith(
                       color: theme.colorScheme.primary,
                       letterSpacing: 2.0,
                     ),
-                  ).animate().fadeIn(delay: 200.ms).slideY(begin: 0.2, end: 0),
+                  )
+                      .animate()
+                      .fadeIn(delay: 300.ms)
+                      .slideY(begin: 0.2, end: 0, curve: Curves.easeOutBack),
 
                   const SizedBox(height: 16),
 
-                  // Headline
+                  // Tagline
                   Text(
-                    'تواصل بحرية',
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.displaySmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: theme.colorScheme.onSurface,
-                      height: 1.2,
-                    ),
-                  ).animate().fadeIn(delay: 400.ms).moveY(begin: 20, end: 0),
-
-                  const SizedBox(height: 16),
-
-                  // Subheadline
-                  Text(
-                    'المكان الآمن والموثوق لمحادثاتك.\nانضم إلينا اليوم وابدأ التجربة.',
+                    'تواصل بحرية تامة وبخصوصية مطلقة مع تشفير متطور من الطرفين.',
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodyLarge?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
+                      color: isDark ? Colors.white70 : Colors.black87,
                       height: 1.6,
                     ),
-                  ).animate().fadeIn(delay: 600.ms).moveY(begin: 20, end: 0),
+                  )
+                      .animate()
+                      .fadeIn(delay: 400.ms)
+                      .slideY(begin: 0.2, end: 0, curve: Curves.easeOutBack),
 
                   const Spacer(flex: 4),
 
-                  // Primary Button
-                  SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const LoginScreen(),
+                  // Bottom Action Glass Card
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(NisabaTheme.radiusXL),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                      child: Container(
+                        padding: const EdgeInsets.all(NisabaTheme.space24),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surface.withValues(alpha: 0.6),
+                          borderRadius: BorderRadius.circular(NisabaTheme.radiusXL),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.2),
+                            width: 1,
                           ),
-                        );
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: theme.colorScheme.primary,
-                        foregroundColor: theme.colorScheme.onPrimary,
-                        elevation: 4,
-                        shadowColor: theme.colorScheme.primary.withValues(
-                          alpha: 0.4,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.05),
+                              blurRadius: 20,
+                              offset: const Offset(0, 10),
+                            )
+                          ],
                         ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                      child: const Text(
-                        'ابدأ الآن',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                        child: Column(
+                          children: [
+                            NisabaButton(
+                              text: 'إنشاء حساب جديد',
+                              onPressed: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => const RegisterScreen(),
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                            NisabaButton(
+                              text: 'تسجيل الدخول',
+                              type: NisabaButtonType.secondary,
+                              onPressed: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => const LoginScreen(),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                  ).animate().fadeIn(delay: 800.ms).moveY(begin: 30, end: 0),
-
-                  const SizedBox(height: 24),
-
-                  // Legal Footer
-                  Text(
-                    'بالتسجيل أنت توافق على الشروط والأحكام وسياسة الخصوصية',
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.outline,
-                      fontSize: 11,
-                    ),
-                  ).animate().fadeIn(delay: 1000.ms),
-
-                  const SizedBox(height: 16),
+                  )
+                      .animate()
+                      .fadeIn(delay: 600.ms)
+                      .slideY(begin: 0.2, end: 0, curve: Curves.easeOutBack),
                 ],
               ),
             ),

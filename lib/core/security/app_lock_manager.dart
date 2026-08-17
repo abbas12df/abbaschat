@@ -14,6 +14,7 @@ class AppLockManager extends ConsumerStatefulWidget {
 class _AppLockManagerState extends ConsumerState<AppLockManager>
     with WidgetsBindingObserver {
   bool _isLocked = false;
+  bool _isAuthenticating = false;
 
   @override
   void initState() {
@@ -60,33 +61,34 @@ class _AppLockManagerState extends ConsumerState<AppLockManager>
   }
 
   Future<void> _promptBiometrics({bool ignoreLockState = false}) async {
-    // Prevent multiple overlays
+    // Prevent multiple overlays or overlapping prompts
+    if (_isAuthenticating) return;
     if (_isLocked && !ignoreLockState) return;
+
+    _isAuthenticating = true;
 
     if (!_isLocked && mounted) {
       setState(() => _isLocked = true);
     }
 
-    // Show Covering Screen or just prompt?
-    // A covering screen is safer to hide content.
-    // For now, we instantly verify.
-
     final bio = ref.read(biometricServiceProvider);
     bool didAuth = false;
 
-    // Loop until auth is successful or user force closes?
-    // Or just once? Usually loops.
+    // Loop until auth is successful or user force closes
     while (!didAuth) {
       didAuth = await bio.authenticate(
         localizedReason: 'مطلوب البصمة لفك القفل',
       );
       if (!didAuth) {
         // User cancelled or failed.
-        // We must keep the app locked/blank.
-        // Wait a bit before retrying?
+        // Wait a bit before retrying.
         await Future.delayed(const Duration(milliseconds: 500));
       }
     }
+
+    _isAuthenticating = false;
+    // Reset paused time so we don't immediately relock if the prompt caused a pause
+    _pausedTime = null; 
 
     if (mounted) {
       setState(() => _isLocked = false);

@@ -23,6 +23,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user_model.dart';
 import '../models/chat_room.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import '../../../core/services/push_notification_service.dart';
 import '../models/sync_request.dart';
 
 enum SyncStatus { idle, requesting, downloading, restoring, completed, error }
@@ -693,9 +694,9 @@ class ChatRepository {
         // --- NEW: SCREENSHOT PROTECTION COMMAND ---
         if (msgType == 'cmd_screenshot_protection_request') {
           debugPrint(
-            'DEBUG: Received SCREENSHOT_PROTECTION_REQUEST from $senderId for $roomId',
+            'DEBUG: Received SCREENSHOT_PROTECTION_REQUEST from $senderId for $roomId: $msgContent',
           );
-          final enabled = msgContent == 'true';
+          final enabled = msgContent == '1' || msgContent == 'true';
           final myId = currentUser.uid;
 
           // Update Local: Enforced Remote Protection
@@ -1161,12 +1162,9 @@ class ChatRepository {
 
         // CHECK FOR DELETE COMMAND
         if (msgType == 'delete') {
-          final deleteRegex = RegExp(r'"id":\s*"([^"]+)"');
-          final match = deleteRegex.firstMatch(decryptedText);
-          final idToDelete =
-              match?.group(1) ?? (msgType == 'delete' ? msgContent : null);
+          final idToDelete = messagePayload['id']?.toString() ?? msgContent;
 
-          if (idToDelete != null) {
+          if (idToDelete != null && idToDelete.isNotEmpty) {
             debugPrint('DEBUG: Processing DELETE command for $idToDelete');
             await _local.deleteMessage(currentUser.uid, roomId, idToDelete);
           }
@@ -1329,6 +1327,89 @@ class ChatRepository {
           }
 
           // Ack/Delete
+          await _relay.sendAck(senderId: senderId, messageId: messageId);
+          await _relay.deleteFromRelay(messageId);
+          return;
+        }
+
+        // --- NEW: FILE RESYNC PROTOCOL ---
+        if (msgType == 'file_request') {
+          final targetMessageId = messagePayload['targetMessageId'];
+          final reqRoomId = messagePayload['roomId'];
+          debugPrint('DEBUG: Processing FILE_REQUEST for message $targetMessageId in room $reqRoomId');
+
+          if (targetMessageId != null && reqRoomId != null) {
+            // Find if I have the message
+            final msgs = await _local.getMessages(currentUser.uid, reqRoomId);
+            final msg = msgs.firstWhere((m) => m['id'] == targetMessageId, orElse: () => <String, dynamic>{});
+
+            bool fileSent = false;
+            if (msg.isNotEmpty) {
+              // Extract file URL
+              String? localPath = msg['imageUrl'] ?? msg['audioUrl'] ?? msg['fileUrl'];
+              if (localPath != null) {
+                final cleanPath = localPath.replaceFirst('file://', '');
+                final file = File(cleanPath);
+                
+                if (file.existsSync()) {
+                  // Re-send it
+                  final fileType = msg['type'] ?? 'file';
+                  final fileName = msg['fileName'] ?? cleanPath.split('/').last;
+                  final fileSize = await file.length();
+                  
+                  // Use existing resync approach depending on size/type
+                  if (fileSize > 1024 * 1024 || (fileType == 'file' && fileSize > 500 * 1024)) {
+                    await _sendFileInChunks(
+                      reqRoomId,
+                      targetMessageId, // reuse original ID so it overwrites requester's side seamlessly
+                      file,
+                      fileName,
+                      originalType: fileType,
+                    );
+                  } else {
+                    await _sendEncryptedContent(
+                      reqRoomId,
+                      file.path,
+                      fileType,
+                      messageId: targetMessageId, // reuse original ID
+                      fileName: fileName,
+                    );
+                  }
+                  
+                  fileSent = true;
+                  debugPrint('DEBUG: File found, initiating resync for $targetMessageId');
+                }
+              }
+            }
+
+            if (!fileSent) {
+              // File is permanently lost from my end too! Notify requester.
+              debugPrint('DEBUG: File not found locally. Sending file_not_found relay to requester.');
+              final notFoundMsgId = DateTime.now().millisecondsSinceEpoch.toString() + "_nf";
+              await _sendEncryptedContent(
+                reqRoomId,
+                '',
+                'file_not_found',
+                messageId: notFoundMsgId,
+                extraPayload: {'targetMessageId': targetMessageId},
+              );
+            }
+          }
+
+          // Ack/Delete the request message itself
+          await _relay.sendAck(senderId: senderId, messageId: messageId);
+          await _relay.deleteFromRelay(messageId);
+          return;
+        }
+
+        if (msgType == 'file_not_found') {
+          final targetMessageId = messagePayload['targetMessageId'];
+          debugPrint('DEBUG: Received FILE_NOT_FOUND for message $targetMessageId');
+          if (targetMessageId != null) {
+            await _local.updateMessage(currentUser.uid, roomId, targetMessageId, {
+              'status': 'permanently_lost',
+            });
+          }
           await _relay.sendAck(senderId: senderId, messageId: messageId);
           await _relay.deleteFromRelay(messageId);
           return;
@@ -1962,6 +2043,42 @@ class ChatRepository {
           encryptedBundle: encryptedBundle,
         );
         allFailed = false;
+        
+        // Send Push Notification via client-side FCM
+        if (!isCommand) {
+          try {
+            final userDoc = await FirebaseFirestore.instance.collection('users').doc(receiverId).get();
+            final fcmToken = userDoc.data()?['fcmToken'];
+            if (fcmToken != null && fcmToken.toString().isNotEmpty) {
+              String senderName = _auth.currentUser?.displayName ?? 'مستخدم';
+              String pushTitle = isGroup ? 'رسالة جديدة في المجموعة' : senderName;
+              String pushBody = 'لديك رسالة جديدة';
+              
+              if (type == 'text') {
+                pushBody = content;
+              } else if (type == 'image') {
+                pushBody = '📷 صورة جديدة';
+              } else if (type == 'audio') {
+                pushBody = '🎵 مقطع صوتي';
+              } else if (type == 'file') {
+                pushBody = '📁 ملف جديد';
+              }
+              
+              if (isGroup) {
+                pushBody = '$senderName: $pushBody';
+              }
+              
+              await PushNotificationService().sendPushMessage(
+                targetToken: fcmToken,
+                title: pushTitle,
+                body: pushBody,
+                data: {'roomId': roomId},
+              );
+            }
+          } catch (pushErr) {
+            debugPrint('DEBUG: Failed to send push notification to $receiverId: $pushErr');
+          }
+        }
       } catch (e) {
         debugPrint('DEBUG: Send failed to $receiverId: $e');
       }
@@ -2512,6 +2629,63 @@ class ChatRepository {
     }
   }
 
+  /// Request a file resync from the peer if the local file is missing.
+  Future<void> requestFileResync(String roomId, String messageId) async {
+    final myId = _auth.currentUser?.uid;
+    if (myId == null) return;
+
+    // 1. Update local status to requesting_resync
+    await _local.updateMessage(myId, roomId, messageId, {
+      'status': 'requesting_resync',
+    });
+
+    // 2. Fetch the room to get the peer ID
+    final room = _local.getConversation(myId, roomId);
+    if (room == null) return;
+    
+    // Determine receiver
+    String receiverId = '';
+    if (room['isGroup'] == true) {
+      // In groups, ideally we'd ask the sender, but for simplicity we can ask the sender of this specific message
+      final msgs = await _local.getMessages(myId, roomId);
+      final msg = msgs.firstWhere((m) => m['id'] == messageId, orElse: () => <String, dynamic>{});
+      if (msg.isNotEmpty && msg['senderId'] != null) {
+        receiverId = msg['senderId'];
+      }
+    } else {
+      // In 1on1, the receiver is the other participant
+      final participants = List<String>.from(room['participants'] ?? []);
+      receiverId = participants.firstWhere((id) => id != myId, orElse: () => '');
+    }
+
+    if (receiverId.isEmpty) return;
+
+    // 3. Send file_request via relay
+    final relayMsgId = DateTime.now().millisecondsSinceEpoch.toString() + "_req";
+    final payload = {
+      'targetMessageId': messageId,
+      'roomId': roomId,
+    };
+
+    try {
+      // Wait, we need to send the payload. We can use _sendEncryptedContent's logic, but let's just use it directly.
+      await _sendEncryptedContent(
+        roomId,
+        '',
+        'file_request',
+        messageId: relayMsgId,
+        extraPayload: payload,
+      );
+      debugPrint('DEBUG: File resync request sent for message $messageId');
+    } catch (e) {
+      debugPrint('DEBUG: Failed to send file_request: $e');
+      // Revert status
+      await _local.updateMessage(myId, roomId, messageId, {
+        'status': 'sent',
+      });
+    }
+  }
+
   String? _readFieldText(Map<String, dynamic> data, List<String> keys) {
     for (final key in keys) {
       final value = _extractFirstText(data[key]);
@@ -2618,6 +2792,7 @@ class ChatRepository {
       payloadMap['groupId'] = roomId;
     }
     final payloadJson = jsonEncode(payloadMap);
+    final myPrivateKey = await CryptoService().getPrivateKeyPem();
 
     for (final receiverId in receiverIds) {
       if (receiverId == 'unknown' || receiverId.isEmpty) continue;
@@ -2630,6 +2805,13 @@ class ChatRepository {
           payloadJson,
           receiverKey,
         );
+
+        if (myPrivateKey != null) {
+          final signature = _signPayload(payloadJson, myPrivateKey);
+          if (signature != null) {
+            encryptedBundle['signature'] = signature;
+          }
+        }
 
         final commandId =
             'del_${DateTime.now().millisecondsSinceEpoch}_$receiverId';
@@ -2921,6 +3103,8 @@ class ChatRepository {
         'timestamp': DateTime.now().millisecondsSinceEpoch,
       });
 
+      final myPrivateKey = await CryptoService().getPrivateKeyPem();
+
       // Fan-out
       for (final receiverId in participants) {
         if (receiverId == myId) continue;
@@ -2933,6 +3117,13 @@ class ChatRepository {
             payload,
             receiverKey,
           );
+
+          if (myPrivateKey != null) {
+            final signature = _signPayload(payload, myPrivateKey);
+            if (signature != null) {
+              encryptedBundle['signature'] = signature;
+            }
+          }
 
           final cmdId = DateTime.now().millisecondsSinceEpoch.toString();
           await _relay.pushToRelay(
@@ -3162,6 +3353,14 @@ class ChatRepository {
             payload,
             receiverKey,
           );
+
+          final myPrivateKey = await CryptoService().getPrivateKeyPem();
+          if (myPrivateKey != null) {
+            final signature = _signPayload(payload, myPrivateKey);
+            if (signature != null) {
+              encryptedBundle['signature'] = signature;
+            }
+          }
 
           final cmdId =
               'del_conv_${DateTime.now().millisecondsSinceEpoch}_$receiverId';
@@ -3907,6 +4106,15 @@ class ChatRepository {
         payload,
         key,
       );
+
+      final myPrivateKey = await CryptoService().getPrivateKeyPem();
+      if (myPrivateKey != null) {
+        final signature = _signPayload(payload, myPrivateKey);
+        if (signature != null) {
+          encryptedBundle['signature'] = signature;
+        }
+      }
+      
       final cmdId = 'cmd_${DateTime.now().millisecondsSinceEpoch}_$userId';
 
       await _relay.pushToRelay(
@@ -4560,9 +4768,9 @@ class ChatRepository {
           continue;
         }
 
-        // Handling Media (Image/Audio): Convert file to Base64
+        // Handling Media (Image/Audio/File): Convert file to Base64
         // IMPROVED: Better file handling with proper validation
-        if (type == 'image' || type == 'audio' || type == 'voice') {
+        if (type == 'image' || type == 'audio' || type == 'voice' || type == 'file') {
           try {
             final file = File(decryptedContent);
 
@@ -4978,7 +5186,8 @@ class ChatRepository {
             syncMsg['text'] = decryptedContent;
           } else if (syncMsg['type'] == 'image' ||
               syncMsg['type'] == 'audio' ||
-              syncMsg['type'] == 'voice') {
+              syncMsg['type'] == 'voice' ||
+              syncMsg['type'] == 'file') {
             // Check if decryptedContent is Base64 (starts with valid chars, no invalid path chars)
             // Simple heuristic: if it doesn't contain '/', it's likely Base64 (or a very weird filename).
             // A file path usually has separators. Base64 doesn't.
@@ -4987,11 +5196,40 @@ class ChatRepository {
                 !decryptedContent.contains('\\');
 
             if (isBase64 && decryptedContent.length > 50) {
-              try {
+              // --- Prevent Resurrecting Locally Deleted Files ---
+              final existingMsg = await _local.getMessageRaw(myId, roomId, syncMsg['id']);
+              bool skipFileWrite = false;
+              
+              if (existingMsg != null) {
+                if (existingMsg['isDeleted'] == true) {
+                  debugPrint('DEBUG: Skipping media restore for locally deleted message ${syncMsg['id']}');
+                  continue; // Do not process or save this message at all
+                }
+                
+                // If it exists but we didn't explicitly request a resync, don't overwrite the file
+                // This prevents re-downloading files the user deliberately deleted from local storage
+                if (existingMsg['status'] != 'requesting_resync') {
+                  debugPrint('DEBUG: Skipping media write for ${syncMsg['id']} (not requesting resync)');
+                  syncMsg['imageUrl'] = existingMsg['imageUrl'];
+                  syncMsg['audioUrl'] = existingMsg['audioUrl'];
+                  syncMsg['fileUrl'] = existingMsg['fileUrl'];
+                  skipFileWrite = true;
+                }
+              }
+              
+              if (skipFileWrite) {
+                // Since we skipped writing the file, we still want to save the metadata (e.g. read status)
+                // but we don't execute the try-catch block below
+              } else {
+                try {
                 final bytes = base64Decode(decryptedContent);
                 final appDir = await getApplicationDocumentsDirectory();
                 // Create a unique filename
-                final extension = (syncMsg['type'] == 'image') ? 'jpg' : 'm4a';
+                String extension = 'bin';
+                if (syncMsg['type'] == 'image') extension = 'jpg';
+                else if (syncMsg['type'] == 'audio' || syncMsg['type'] == 'voice') extension = 'm4a';
+                else if (syncMsg['type'] == 'file') extension = syncMsg['fileName']?.split('.').last ?? 'file';
+                
                 final filename =
                     'synced_${DateTime.now().millisecondsSinceEpoch}_${const Uuid().v4()}.$extension';
                 final localFile = File('${appDir.path}/$filename');
@@ -5008,6 +5246,8 @@ class ChatRepository {
                   // Update the message with the NEW local path (use absolute path)
                   if (syncMsg['type'] == 'image') {
                     syncMsg['imageUrl'] = localFile.absolute.path;
+                  } else if (syncMsg['type'] == 'file') {
+                    syncMsg['fileUrl'] = localFile.absolute.path;
                   } else {
                     syncMsg['audioUrl'] = localFile.absolute.path;
                   }
@@ -5018,6 +5258,8 @@ class ChatRepository {
                   // Fallback: try to use Base64 directly
                   if (syncMsg['type'] == 'image') {
                     syncMsg['imageUrl'] = decryptedContent;
+                  } else if (syncMsg['type'] == 'file') {
+                    syncMsg['fileUrl'] = decryptedContent;
                   } else {
                     syncMsg['audioUrl'] = decryptedContent;
                   }
@@ -5027,10 +5269,13 @@ class ChatRepository {
                 // Fallback: keep original string (might be broken)
                 if (syncMsg['type'] == 'image') {
                   syncMsg['imageUrl'] = decryptedContent;
+                } else if (syncMsg['type'] == 'file') {
+                  syncMsg['fileUrl'] = decryptedContent;
                 } else {
                   syncMsg['audioUrl'] = decryptedContent;
                 }
               }
+              } // Close the else block
             } else {
               // Should be a path, but likely invalid on this device.
               debugPrint(
@@ -5038,6 +5283,8 @@ class ChatRepository {
               );
               if (syncMsg['type'] == 'image') {
                 syncMsg['imageUrl'] = decryptedContent;
+              } else if (syncMsg['type'] == 'file') {
+                syncMsg['fileUrl'] = decryptedContent;
               } else {
                 syncMsg['audioUrl'] = decryptedContent;
               }
@@ -5280,35 +5527,13 @@ class ChatRepository {
         'isRemoteProtectionEnforced': newSafety,
       });
     } else {
-      // 1-on-1: Send Command to Peer
-      final receiverId = _getReceiverIdFromRoom(roomId, myId);
-      if (receiverId == 'unknown') return;
-
-      try {
-        final receiverKey = await _keyRepo.getUserPublicKey(receiverId);
-        if (receiverKey == null) return;
-
-        final payload = jsonEncode({
-          'type': 'cmd_screenshot_protection_request', // New Type
-          'content': enabled.toString(),
-          'timestamp': DateTime.now().millisecondsSinceEpoch,
-        });
-
-        final encryptedBundle = await EncryptionHelper.encryptMessage(
-          payload,
-          receiverKey,
-        );
-
-        final commandId = 'cmd_ss_${DateTime.now().millisecondsSinceEpoch}';
-        await _relay.pushToRelay(
-          receiverId: receiverId,
-          messageId: commandId,
-          encryptedBundle: encryptedBundle,
-        );
-        debugPrint('DEBUG: Sent screenshot protection request to $receiverId');
-      } catch (e) {
-        debugPrint('ERROR: Failed to send screenshot command: $e');
-      }
+      // 1-on-1: Send Command to Peer using standard encrypted/signed channel
+      await _sendEncryptedContent(
+        roomId,
+        enabled.toString(),
+        'cmd_screenshot_protection_request',
+      );
+      debugPrint('DEBUG: Sent screenshot protection request to $_getReceiverIdFromRoom(roomId, myId)');
     }
   }
 }

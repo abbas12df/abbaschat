@@ -51,20 +51,27 @@ class SettingsService {
       _getBool('privacy_read_receipts', defaultValue: true);
 
   // --- Security ---
-  Future<void> setAppLock(bool value) => _setBool('security_app_lock', value);
-  bool get appLock => _getBool('security_app_lock', defaultValue: false);
+  Future<void> setAppLock(bool value) async {
+    final box = Hive.box('global_app_settings');
+    await box.put('security_app_lock', value);
+  }
+
+  bool get appLock {
+    if (!Hive.isBoxOpen('global_app_settings')) return false;
+    final box = Hive.box('global_app_settings');
+    return box.get('security_app_lock', defaultValue: false) as bool;
+  }
 
   // --- Appearance ---
   Future<void> setThemeMode(String value) async {
-    final uid = _uid;
-    if (uid == null) return;
-    await _local.saveUserSetting(uid, 'appearance_theme_mode', value);
+    final box = Hive.box('global_app_settings');
+    await box.put('appearance_theme_mode', value);
   }
 
   String get themeMode {
-    if (_uid == null) return 'system';
-    return _local.getUserSetting(_uid!, 'appearance_theme_mode') as String? ??
-        'system';
+    if (!Hive.isBoxOpen('global_app_settings')) return 'system';
+    final box = Hive.box('global_app_settings');
+    return box.get('appearance_theme_mode') as String? ?? 'system';
   }
 
   // --- Notifications ---
@@ -120,15 +127,14 @@ class SettingsService {
 
   // --- Security ---
   Future<void> setAutoLockTimeout(int seconds) async {
-    final uid = _uid;
-    if (uid == null) return;
-    await _local.saveUserSetting(uid, 'security_auto_lock_timeout', seconds);
+    final box = Hive.box('global_app_settings');
+    await box.put('security_auto_lock_timeout', seconds);
   }
 
   int get autoLockTimeout {
-    if (_uid == null) return 0;
-    final val = _local.getUserSetting(_uid!, 'security_auto_lock_timeout');
-    return val is int ? val : 0;
+    if (!Hive.isBoxOpen('global_app_settings')) return 0;
+    final box = Hive.box('global_app_settings');
+    return box.get('security_auto_lock_timeout', defaultValue: 0) as int;
   }
 
   // --- Language ---

@@ -136,4 +136,13 @@ class Message {
   }
 }
 
-enum MessageStatus { sending, sent, delivered, read, failed, receiving }
+enum MessageStatus {
+  sending,
+  sent,
+  delivered,
+  read,
+  failed,
+  receiving,
+  requesting_resync,
+  permanently_lost
+}

@@ -62,6 +62,7 @@ class _ImageGeneratorScreenState extends ConsumerState<ImageGeneratorScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final imageUrl = _generatedContent != null
         ? _extractImageUrl(_generatedContent!)
         : null;
@@ -125,18 +126,18 @@ class _ImageGeneratorScreenState extends ConsumerState<ImageGeneratorScreen> {
                       if (progress == null) return child;
                       return Container(
                         height: 300,
-                        color: Colors.grey[200],
+                        color: theme.colorScheme.surfaceContainerHighest,
                         child: const Center(child: CircularProgressIndicator()),
                       );
                     },
                     errorBuilder: (ctx, err, stack) => Container(
                       height: 200,
-                      color: Colors.grey[200],
+                      color: theme.colorScheme.surfaceContainerHighest,
                       alignment: Alignment.center,
-                      child: const Icon(
+                      child: Icon(
                         Icons.broken_image,
                         size: 50,
-                        color: Colors.grey,
+                        color: theme.iconTheme.color,
                       ),
                     ),
                   ),
@@ -146,7 +147,7 @@ class _ImageGeneratorScreenState extends ConsumerState<ImageGeneratorScreen> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.grey[100],
+                    color: theme.colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(_generatedContent!),

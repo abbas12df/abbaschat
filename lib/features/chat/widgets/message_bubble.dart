@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:convert';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +10,7 @@ import '../models/message.dart';
 import '../repositories/chat_repository.dart';
 import 'linkable_message_text.dart';
 import 'system_message_widget.dart';
+import 'package:gal/gal.dart';
 
 class MessageBubble extends ConsumerWidget {
   final Message message;
@@ -23,6 +25,7 @@ class MessageBubble extends ConsumerWidget {
   final bool isAudioPlaying;
   final Duration audioPosition;
   final Duration audioDuration;
+  final Function(Message)? onRequestResync;
 
   const MessageBubble({
     super.key,
@@ -38,6 +41,7 @@ class MessageBubble extends ConsumerWidget {
     this.isAudioPlaying = false,
     this.audioPosition = Duration.zero,
     this.audioDuration = Duration.zero,
+    this.onRequestResync,
   });
 
   @override
@@ -56,8 +60,8 @@ class MessageBubble extends ConsumerWidget {
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // Enhanced dynamic corner radius
-    const double rLarge = 18.0;
+    // Professional dynamic corner radius
+    const double rLarge = 20.0;
     const double rSmall = 4.0;
 
     final BorderRadius borderRadius = BorderRadius.only(
@@ -346,6 +350,55 @@ class MessageBubble extends ConsumerWidget {
         message.status == MessageStatus.sending ||
         message.status == MessageStatus.receiving;
 
+    final theme = Theme.of(context);
+    final file = message.imageUrl != null
+        ? File(message.imageUrl!.replaceFirst('file://', ''))
+        : null;
+    final isMissing =
+        file != null &&
+        !file.existsSync() &&
+        !isTransferring &&
+        message.status != MessageStatus.failed;
+
+    if (message.status == MessageStatus.permanently_lost) {
+      return Container(
+        constraints: const BoxConstraints(maxWidth: 280),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest.withValues(
+            alpha: 0.5,
+          ),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.broken_image_rounded, color: Colors.red, size: 24),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'الصورة محذوفة من الطرفين ولا يمكن استردادها.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (isMissing) {
+      return _MissingFileCard(
+        message: message,
+        title: 'صورة',
+        icon: Icons.image_not_supported_rounded,
+        onRequestResync: onRequestResync,
+      );
+    }
+
     return GestureDetector(
       onTap: () => onImageTap?.call(message.imageUrl ?? ''),
       child: Hero(
@@ -537,11 +590,63 @@ class MessageBubble extends ConsumerWidget {
   }
 
   Widget _buildAudio(BuildContext context) {
+    final theme = Theme.of(context);
+    final isTransferring =
+        message.status == MessageStatus.sending ||
+        message.status == MessageStatus.receiving;
+
+    final file = message.audioUrl != null
+        ? File(message.audioUrl!.replaceFirst('file://', ''))
+        : null;
+    final isMissing =
+        file != null &&
+        !file.existsSync() &&
+        !isTransferring &&
+        message.status != MessageStatus.failed;
+
+    if (message.status == MessageStatus.permanently_lost) {
+      return Container(
+        constraints: const BoxConstraints(maxWidth: 280),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest.withValues(
+            alpha: 0.5,
+          ),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.mic_off_rounded, color: Colors.red, size: 24),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'المقطع الصوتي محذوف من الطرفين ولا يمكن استرداده.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (isMissing) {
+      return _MissingFileCard(
+        message: message,
+        title: 'مقطع صوتي',
+        icon: Icons.audio_file_rounded,
+        onRequestResync: onRequestResync,
+      );
+    }
+
     final durationText = _formatDuration(
       isAudioPlaying ? audioPosition : audioDuration,
     );
 
-    final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final otherBgColor = isDark
         ? theme.colorScheme.surfaceVariant
@@ -558,8 +663,8 @@ class MessageBubble extends ConsumerWidget {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  theme.colorScheme.primary.withOpacity(0.2),
-                  theme.colorScheme.primary.withOpacity(0.1),
+                  theme.colorScheme.onPrimary.withOpacity(0.15),
+                  theme.colorScheme.onPrimary.withOpacity(0.05),
                 ],
               )
             : null,
@@ -706,7 +811,7 @@ class MessageBubble extends ConsumerWidget {
                   decoration: BoxDecoration(
                     color:
                         (isMe
-                                ? theme.colorScheme.primary
+                                ? theme.colorScheme.onPrimary
                                 : theme.colorScheme.surfaceContainerHighest)
                             .withOpacity(0.2),
                     borderRadius: BorderRadius.circular(8),
@@ -797,6 +902,14 @@ class MessageBubble extends ConsumerWidget {
       case MessageStatus.receiving:
         icon = Icons.downloading_rounded;
         color = theme.colorScheme.primary;
+        break;
+      case MessageStatus.requesting_resync:
+        icon = Icons.sync_rounded;
+        color = theme.colorScheme.onPrimary.withOpacity(0.6);
+        break;
+      case MessageStatus.permanently_lost:
+        icon = Icons.warning_rounded;
+        color = theme.colorScheme.error;
         break;
     }
 
@@ -899,6 +1012,30 @@ class MessageBubble extends ConsumerWidget {
     }
   }
 
+  Future<void> _handleFileShare(BuildContext context, Message message) async {
+    final url = message.fileUrl;
+    if (url == null || url.isEmpty) return;
+
+    final cleanPath = url.replaceFirst('file://', '');
+    final file = File(cleanPath);
+
+    if (!file.existsSync()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('الملف غير موجود في ذاكرة الهاتف المحلية'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    final fileName = message.fileName ?? file.path.split('/').last;
+
+    if (context.mounted) {
+      await Share.shareXFiles([XFile(file.path)], text: fileName);
+    }
+  }
+
   Widget _buildFile(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -920,6 +1057,55 @@ class MessageBubble extends ConsumerWidget {
 
     final iconData = _getFileIcon(message.fileName, message.type);
 
+    final file = message.fileUrl != null
+        ? File(message.fileUrl!.replaceFirst('file://', ''))
+        : null;
+    final isMissing =
+        file != null && !file.existsSync() && !isTransferring && !isFailed;
+
+    if (message.status == MessageStatus.permanently_lost) {
+      return Container(
+        constraints: const BoxConstraints(maxWidth: 280),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest.withValues(
+            alpha: 0.5,
+          ),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.warning_amber_rounded,
+              color: Colors.red,
+              size: 24,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'الملف محذوف من الطرفين ولا يمكن استرداده.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (isMissing) {
+      return _MissingFileCard(
+        message: message,
+        title: 'ملف',
+        icon: Icons.insert_drive_file_rounded,
+        onRequestResync: onRequestResync,
+      );
+    }
+
     return InkWell(
       onTap: () => _handleFileTap(context, message),
       borderRadius: BorderRadius.circular(12),
@@ -928,7 +1114,7 @@ class MessageBubble extends ConsumerWidget {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: isMe
-              ? theme.colorScheme.primary.withValues(alpha: 0.12)
+              ? theme.colorScheme.onPrimary.withValues(alpha: 0.15)
               : (isDark
                     ? theme.colorScheme.surfaceContainerHighest
                     : theme.colorScheme.surfaceContainerHighest.withValues(
@@ -939,7 +1125,9 @@ class MessageBubble extends ConsumerWidget {
             color: isFailed
                 ? Colors.red.withValues(alpha: 0.4)
                 : (isReady
-                      ? theme.colorScheme.primary.withValues(alpha: 0.2)
+                      ? (isMe
+                            ? theme.colorScheme.onPrimary.withValues(alpha: 0.2)
+                            : theme.colorScheme.primary.withValues(alpha: 0.2))
                       : Colors.transparent),
           ),
         ),
@@ -951,34 +1139,58 @@ class MessageBubble extends ConsumerWidget {
                 Stack(
                   alignment: Alignment.center,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: isFailed
-                            ? Colors.red.withValues(alpha: 0.1)
-                            : theme.colorScheme.primaryContainer,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(
-                        isFailed ? Icons.error_outline : iconData,
-                        color: isFailed
-                            ? Colors.red
-                            : theme.colorScheme.primary,
-                        size: 24,
-                      ),
-                    ),
                     if (isTransferring)
                       SizedBox(
                         width: 44,
                         height: 44,
-                        child: CircularProgressIndicator(
-                          value: (progressVal != null && progressVal > 0)
-                              ? progressVal
-                              : null,
-                          strokeWidth: 3,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            theme.colorScheme.primary,
-                          ),
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            CircularProgressIndicator(
+                              value: (progressVal != null && progressVal > 0)
+                                  ? progressVal
+                                  : null,
+                              strokeWidth: 3,
+                              backgroundColor: isMe
+                                  ? Colors.white24
+                                  : theme.colorScheme.primary.withValues(
+                                      alpha: 0.2,
+                                    ),
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                isMe ? Colors.white : theme.colorScheme.primary,
+                              ),
+                            ),
+                            Icon(
+                              isSending
+                                  ? Icons.upload_rounded
+                                  : Icons.download_rounded,
+                              size: 18,
+                              color: isMe
+                                  ? Colors.white
+                                  : theme.colorScheme.primary,
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: isFailed
+                              ? Colors.red.withValues(alpha: 0.1)
+                              : (isMe
+                                    ? Colors.white.withValues(alpha: 0.2)
+                                    : theme.colorScheme.primaryContainer),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          isFailed ? Icons.error_outline : iconData,
+                          color: isFailed
+                              ? Colors.red
+                              : (isMe
+                                    ? Colors.white
+                                    : theme.colorScheme.primary),
+                          size: 24,
                         ),
                       ),
                   ],
@@ -993,7 +1205,7 @@ class MessageBubble extends ConsumerWidget {
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           color: isMe
-                              ? theme.colorScheme.onPrimary
+                              ? Colors.white
                               : theme.colorScheme.onSurface,
                         ),
                         maxLines: 1,
@@ -1002,33 +1214,37 @@ class MessageBubble extends ConsumerWidget {
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          Text(
-                            message.fileSize != null
-                                ? '${(message.fileSize! / 1024).toStringAsFixed(1)} KB'
-                                : 'ملف',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: isMe
-                                  ? theme.colorScheme.onPrimary.withValues(
-                                      alpha: 0.7,
-                                    )
-                                  : theme.colorScheme.onSurfaceVariant,
+                          Expanded(
+                            child: Text(
+                              isTransferring
+                                  ? (isSending
+                                        ? 'جاري الإرسال... ${((progressVal ?? 0.0) * 100).toInt()}%'
+                                        : 'جاري التحميل... ${((progressVal ?? 0.0) * 100).toInt()}%')
+                                  : (message.fileSize != null
+                                        ? '${(message.fileSize! / 1024).toStringAsFixed(1)} KB'
+                                        : 'ملف'),
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: isMe
+                                    ? Colors.white70
+                                    : theme.colorScheme.onSurfaceVariant,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           if (isReady) ...[
                             const SizedBox(width: 6),
-                            Icon(
-                              Icons.touch_app,
-                              size: 12,
-                              color: theme.colorScheme.primary,
-                            ),
-                            const SizedBox(width: 2),
-                            Text(
-                              'انقر للفتح',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: theme.colorScheme.primary,
+                            InkWell(
+                              onTap: () => _handleFileShare(context, message),
+                              child: Padding(
+                                padding: const EdgeInsets.all(4.0),
+                                child: Icon(
+                                  Icons.share_rounded,
+                                  size: 16,
+                                  color: isMe
+                                      ? Colors.white
+                                      : theme.colorScheme.primary,
+                                ),
                               ),
                             ),
                           ],
@@ -1039,43 +1255,6 @@ class MessageBubble extends ConsumerWidget {
                 ),
               ],
             ),
-            if (isTransferring) ...[
-              const SizedBox(height: 10),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: (progressVal != null && progressVal > 0)
-                      ? progressVal
-                      : null,
-                  minHeight: 4,
-                  backgroundColor: theme.colorScheme.surface.withValues(
-                    alpha: 0.3,
-                  ),
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    isMe
-                        ? theme.colorScheme.onPrimary
-                        : theme.colorScheme.primary,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 4),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    isSending ? 'جاري الإرسال...' : 'جاري التحميل...',
-                    style: const TextStyle(fontSize: 10),
-                  ),
-                  Text(
-                    '${((progressVal ?? 0.0) * 100).toInt()}%',
-                    style: const TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ],
             if (isFailed) ...[
               const SizedBox(height: 4),
               const Text(
@@ -1192,5 +1371,130 @@ class _UserAvatarState extends ConsumerState<_UserAvatar> {
             )
           : null,
     );
+  }
+}
+
+class _MissingFileCard extends StatelessWidget {
+  final Message message;
+  final String title;
+  final IconData icon;
+  final Function(Message)? onRequestResync;
+
+  const _MissingFileCard({
+    required this.message,
+    required this.title,
+    required this.icon,
+    this.onRequestResync,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isRequesting = message.status == MessageStatus.requesting_resync;
+
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 280),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface.withValues(alpha: 0.8),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primaryContainer,
+                    shape: BoxShape.circle,
+                  ),
+                  child: isRequesting
+                      ? SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: theme.colorScheme.onPrimaryContainer,
+                          ),
+                        )
+                      : Icon(
+                          icon,
+                          color: theme.colorScheme.onPrimaryContainer,
+                          size: 24,
+                        ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: theme.colorScheme.onSurface,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        isRequesting ? 'جاري الاستدعاء...' : 'الملف غير موجود',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isRequesting
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.error,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (!isRequesting) ...[
+                  const SizedBox(width: 8),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () {
+                        if (onRequestResync != null) {
+                          onRequestResync!(message);
+                        }
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Icon(
+                          Icons.sync_rounded,
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    ).animate(target: isRequesting ? 1 : 0).shimmer(
+          duration: const Duration(seconds: 2),
+          color: theme.colorScheme.primary.withValues(alpha: 0.2),
+        );
   }
 }

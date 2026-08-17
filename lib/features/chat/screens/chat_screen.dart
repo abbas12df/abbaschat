@@ -8,6 +8,7 @@ import 'package:file_picker/file_picker.dart'; // Added
 import 'dart:convert';
 import 'dart:async'; // Added for Timer
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:share_plus/share_plus.dart';
 import 'full_screen_image_screen.dart'; // Added import
 import 'package:record/record.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -1028,9 +1029,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                   final isProtected =
                       room.isOutgoingProtectionEnabled ||
                       room.isRemoteProtectionEnforced;
-                  ScreenSecurityService.syncRoomProtection(
-                    isRoomProtectionEnabled: isProtected,
-                  );
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    ScreenSecurityService.syncRoomProtection(
+                      isRoomProtectionEnabled: isProtected,
+                    );
+                  });
                 }
                 return const SizedBox.shrink();
               },
@@ -1804,27 +1807,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Theme.of(context).scaffoldBackgroundColor,
-                Theme.of(context).scaffoldBackgroundColor.withOpacity(0.95),
-              ],
-            ),
+            color: Theme.of(context).scaffoldBackgroundColor,
             border: Border(
-              top: BorderSide(
-                color: Theme.of(context).dividerColor.withOpacity(0.15),
-                width: 1,
-              ),
+              top: BorderSide(color: Theme.of(context).dividerColor, width: 1),
             ),
-            boxShadow: [
-              BoxShadow(
-                color: Theme.of(context).colorScheme.shadow.withOpacity(0.03),
-                blurRadius: 10,
-                offset: const Offset(0, -2),
-              ),
-            ],
           ),
           child: SafeArea(
             child: Row(
@@ -2045,30 +2031,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                           child: Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  Theme.of(
-                                    context,
-                                  ).colorScheme.primary.withOpacity(0.15),
-                                  Theme.of(
-                                    context,
-                                  ).colorScheme.primary.withOpacity(0.08),
-                                ],
-                              ),
-                              borderRadius: BorderRadius.circular(16),
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .primaryContainer
+                                  .withValues(alpha: 0.3),
+                              borderRadius: BorderRadius.circular(24),
                               border: Border.all(
                                 color: Theme.of(
                                   context,
-                                ).colorScheme.primary.withOpacity(0.2),
-                                width: 1.5,
+                                ).colorScheme.primary.withValues(alpha: 0.2),
+                                width: 1.0,
                               ),
                             ),
                             child: Icon(
-                              Icons.attach_file_rounded, // Changed Icon
+                              Icons.attach_file_rounded,
                               color: Theme.of(context).colorScheme.primary,
-                              size: 24, // Keep size
+                              size: 24,
                             ),
                           ),
                         ),
@@ -2084,34 +2062,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                         if (_editingMessageId != null) _buildEditingPreview(),
                         Container(
                           decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                Theme.of(
-                                  context,
-                                ).colorScheme.surfaceVariant.withOpacity(0.6),
-                                Theme.of(
-                                  context,
-                                ).colorScheme.surfaceVariant.withOpacity(0.3),
-                              ],
-                            ),
+                            color: Theme.of(context).colorScheme.surface,
                             borderRadius: BorderRadius.circular(28),
                             border: Border.all(
-                              color: Theme.of(
-                                context,
-                              ).dividerColor.withOpacity(0.1),
+                              color: Theme.of(context).dividerColor,
                               width: 1,
                             ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.shadow.withOpacity(0.03),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
                           ),
                           child: TextField(
                             controller: _msgController,
@@ -2156,42 +2112,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                               width: 44,
                               height: 44,
                               decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: isTextEmpty
-                                      ? [
-                                          Theme.of(context)
-                                              .colorScheme
-                                              .onSurfaceVariant
-                                              .withOpacity(0.6),
-                                          Theme.of(context)
-                                              .colorScheme
-                                              .onSurfaceVariant
-                                              .withOpacity(0.8),
-                                        ]
-                                      : [
-                                          Theme.of(context).colorScheme.primary,
-                                          Theme.of(context).colorScheme.primary
-                                              .withOpacity(0.8),
-                                        ],
-                                ),
+                                color: isTextEmpty
+                                    ? Theme.of(
+                                        context,
+                                      ).colorScheme.surfaceContainerHighest
+                                    : Theme.of(context).colorScheme.primary,
                                 shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color:
-                                        (isTextEmpty
-                                                ? Theme.of(
-                                                    context,
-                                                  ).colorScheme.onSurfaceVariant
-                                                : Theme.of(
-                                                    context,
-                                                  ).colorScheme.primary)
-                                            .withOpacity(0.3),
-                                    blurRadius: 12,
-                                    offset: const Offset(0, 4),
-                                  ),
-                                ],
                               ),
                               child: Icon(
                                 isTextEmpty
@@ -2396,6 +2322,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       isAudioPlaying: _playingAudioId == msg.id,
       audioPosition: _currentPosition,
       audioDuration: _totalDuration,
+      onRequestResync: (message) {
+        if (_roomId != null) {
+          ref.read(chatRepositoryProvider).requestFileResync(
+                _roomId!,
+                message.id,
+              );
+        }
+      },
     );
 
     if (widget.isGroup && !isMe && isFirst) {
@@ -2453,12 +2387,41 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       onDeleteForEveryone: canDeleteForEveryone
           ? () => _confirmDeleteForEveryone(msg.id)
           : null,
-      onSave: (msg.type == 'image' && msg.imageUrl != null)
+      onSave:
+          (msg.type == 'image' && msg.imageUrl != null) ||
+              (msg.type == 'file' && msg.fileUrl != null)
           ? () {
-              _saveImage(msg.imageUrl!);
+              if (msg.type == 'image' && msg.imageUrl != null) {
+                _saveImage(msg.imageUrl!);
+              } else if (msg.type == 'file' && msg.fileUrl != null) {
+                _saveDocument(msg.fileUrl!, msg.fileName ?? 'ملف');
+              }
             }
           : null,
       onEdit: () => _onEdit(msg),
+      onTestDeleteLocal: (msg.type == 'image' || msg.type == 'file')
+          ? () async {
+              Navigator.pop(context);
+              final path = msg.type == 'image' ? msg.imageUrl : msg.fileUrl;
+              if (path != null && !path.startsWith('http')) {
+                try {
+                  final file = File(path);
+                  if (file.existsSync()) {
+                    file.deleteSync();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'تم حذف الملف من ذاكرة الجهاز. اخرج من المحادثة وادخل مجدداً لتجربة الاستدعاء.',
+                        ),
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  debugPrint('Error deleting local file: $e');
+                }
+              }
+            }
+          : null,
     );
   }
 
@@ -2483,12 +2446,41 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       onDeleteForEveryone: canDeleteForEveryone
           ? () => _confirmDeleteForEveryone(msg.id)
           : null,
-      onSave: (msg.type == 'image' && msg.imageUrl != null)
+      onSave:
+          (msg.type == 'image' && msg.imageUrl != null) ||
+              (msg.type == 'file' && msg.fileUrl != null)
           ? () {
-              _saveImage(msg.imageUrl!);
+              if (msg.type == 'image' && msg.imageUrl != null) {
+                _saveImage(msg.imageUrl!);
+              } else if (msg.type == 'file' && msg.fileUrl != null) {
+                _saveDocument(msg.fileUrl!, msg.fileName ?? 'ملف');
+              }
             }
           : null,
       onEdit: () => _onEdit(msg),
+      onTestDeleteLocal: (msg.type == 'image' || msg.type == 'file')
+          ? () async {
+              Navigator.pop(context);
+              final path = msg.type == 'image' ? msg.imageUrl : msg.fileUrl;
+              if (path != null && !path.startsWith('http')) {
+                try {
+                  final file = File(path);
+                  if (file.existsSync()) {
+                    file.deleteSync();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'تم حذف الملف من ذاكرة الجهاز. اخرج من المحادثة وادخل مجدداً لتجربة الاستدعاء.',
+                        ),
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  debugPrint('Error deleting local file: $e');
+                }
+              }
+            }
+          : null,
     );
   }
 
@@ -2736,6 +2728,85 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       }
     } catch (e) {
       debugPrint('Save Error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('فشل الحفظ: $e')));
+      }
+    }
+  }
+
+  Future<void> _saveDocument(String url, String fileName) async {
+    try {
+      final cleanPath = url.replaceFirst('file://', '');
+      final file = File(cleanPath);
+
+      if (!file.existsSync()) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('الملف غير موجود في ذاكرة الهاتف المحلية'),
+            ),
+          );
+        }
+        return;
+      }
+
+      final ext = fileName.split('.').last.toLowerCase();
+      final isMedia = [
+        'jpg',
+        'jpeg',
+        'png',
+        'webp',
+        'mp4',
+        'mov',
+        'avi',
+      ].contains(ext);
+
+      if (isMedia) {
+        // Save media to Gallery
+        final hasAccess = await Gal.requestAccess();
+        if (hasAccess) {
+          if (['mp4', 'mov', 'avi'].contains(ext)) {
+            await Gal.putVideo(file.path);
+          } else {
+            await Gal.putImage(file.path);
+          }
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('تم حفظ الوسائط في المعرض (Gallery) بنجاح'),
+              ),
+            );
+          }
+          return;
+        }
+      } else if (Platform.isAndroid) {
+        // Save generic files to Downloads/Nisaba on Android
+        final downloadDir = Directory('/storage/emulated/0/Download/Nisaba');
+        if (!downloadDir.existsSync()) {
+          downloadDir.createSync(recursive: true);
+        }
+        final newFile = File('${downloadDir.path}/$fileName');
+        await file.copy(newFile.path);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'تم الحفظ بنجاح في مجلد التنزيلات:\nDownloads/Nisaba/$fileName',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Fallback: Share sheet (allows "Save to Files" on iOS, or sharing to other apps)
+      if (mounted) {
+        await Share.shareXFiles([XFile(file.path)], text: fileName);
+      }
+    } catch (e) {
+      debugPrint('Error saving file directly: $e');
       if (mounted) {
         ScaffoldMessenger.of(
           context,

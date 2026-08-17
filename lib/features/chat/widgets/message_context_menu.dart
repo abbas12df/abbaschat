@@ -14,6 +14,7 @@ class MessageContextMenu extends StatelessWidget {
   final VoidCallback? onDeleteForEveryone;
   final VoidCallback? onSave; // New: Save Image/Audio
   final VoidCallback? onEdit; // New: Edit Message
+  final VoidCallback? onTestDeleteLocal; // New
 
   const MessageContextMenu({
     super.key,
@@ -26,6 +27,7 @@ class MessageContextMenu extends StatelessWidget {
     this.onDeleteForEveryone,
     this.onSave,
     this.onEdit,
+    this.onTestDeleteLocal,
   });
 
   static Future<void> show(
@@ -39,6 +41,7 @@ class MessageContextMenu extends StatelessWidget {
     VoidCallback? onDeleteForEveryone,
     VoidCallback? onSave,
     VoidCallback? onEdit,
+    VoidCallback? onTestDeleteLocal,
   }) {
     return Navigator.of(context).push(
       PageRouteBuilder(
@@ -56,6 +59,7 @@ class MessageContextMenu extends StatelessWidget {
             onDeleteForEveryone: onDeleteForEveryone,
             onSave: onSave,
             onEdit: onEdit,
+            onTestDeleteLocal: onTestDeleteLocal,
           );
         },
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
@@ -157,13 +161,14 @@ class MessageContextMenu extends StatelessWidget {
                                   },
                                 ),
                               if (message.type == 'image' ||
-                                  message.type == 'audio')
+                                  message.type == 'audio' ||
+                                  message.type == 'file')
                                 _buildActionItem(
                                   context,
                                   icon: Icons.save_alt_rounded,
                                   label: message.type == 'image'
                                       ? 'حفظ الصورة'
-                                      : 'حفظ الملف الصوتي',
+                                      : (message.type == 'audio' ? 'حفظ الملف الصوتي' : 'حفظ الملف'),
                                   onTap: () {
                                     if (onSave != null) {
                                       onSave!();
@@ -183,7 +188,15 @@ class MessageContextMenu extends StatelessWidget {
                                     }
                                   },
                                 ),
-                              const Divider(height: 1),
+                                const Divider(height: 1),
+                              if (onTestDeleteLocal != null)
+                                _buildActionItem(
+                                  context,
+                                  icon: Icons.bug_report_rounded,
+                                  label: 'حذف الملف محلياً (للتجربة)',
+                                  color: Colors.orange,
+                                  onTap: onTestDeleteLocal!,
+                                ),
                               _buildActionItem(
                                 context,
                                 icon: Icons.delete_outline_rounded,

@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:qqqq/core/widgets/nisaba_button.dart';
+import 'package:qqqq/core/widgets/nisaba_text_field.dart';
+import 'package:qqqq/core/widgets/nisaba_card.dart';
 import '../services/auth_service.dart';
 import 'auth_wrapper.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -87,107 +91,165 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
     return Scaffold(
-      appBar: AppBar(title: const Text('إكمال الملف الشخصي')),
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'خطوة أخيرة!',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'يرجى إكمال بياناتك للبدء.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey),
-              ),
-              const SizedBox(height: 32),
-
-              TextFormField(
-                controller: _nameController,
-                decoration: const InputDecoration(
-                  labelText: 'الاسم الظاهر',
-                  border: OutlineInputBorder(),
-                ),
-                validator: (val) =>
-                    (val == null || val.length < 3) ? 'الاسم قصير جداً' : null,
-              ),
-              const SizedBox(height: 16),
-
-              TextFormField(
-                controller: _usernameController,
-                decoration: InputDecoration(
-                  labelText: 'معرف المستخدم (Username)',
-                  border: const OutlineInputBorder(),
-                  prefixText: '@',
-                  errorText: _usernameError,
-                ),
-                onChanged: (_) => setState(() => _usernameError = null),
-                validator: (val) {
-                  if (val == null || val.length < 4)
-                    return 'يجب أن يكون 4 أحرف على الأقل';
-                  if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(val))
-                    return 'أحرف إنجليزية وأرقام فقط';
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-
-              // Conditional Password Field for Social Login
-              if (widget.isSocialLogin) ...[
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade50,
-                    border: Border.all(color: Colors.orange.shade200),
-                    borderRadius: BorderRadius.circular(8),
+        physics: const BouncingScrollPhysics(),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: 16),
+                
+                // Fun bubbly icon
+                Center(
+                  child: Container(
+                    width: 100,
+                    height: 100,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.tertiary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(40),
+                    ),
+                    child: Center(
+                      child: Text(
+                        '✨',
+                        style: TextStyle(fontSize: 48),
+                      ),
+                    ),
                   ),
+                )
+                    .animate()
+                    .scale(curve: Curves.easeOutBack, duration: 600.ms)
+                    .fadeIn(),
+
+                const SizedBox(height: 32),
+
+                Text(
+                  'خطوة أخيرة!',
+                  style: theme.textTheme.displayMedium?.copyWith(
+                    color: theme.colorScheme.primary,
+                  ),
+                  textAlign: TextAlign.center,
+                ).animate().fadeIn(delay: 100.ms).slideY(begin: 0.2, curve: Curves.easeOutBack),
+
+                const SizedBox(height: 12),
+                Text(
+                  'يرجى إكمال بياناتك للبدء في استخدام التطبيق.',
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  textAlign: TextAlign.center,
+                ).animate().fadeIn(delay: 200.ms).slideY(begin: 0.2, curve: Curves.easeOutBack),
+
+                const SizedBox(height: 48),
+
+                NisabaCard(
+                  hasShadow: true,
+                  padding: const EdgeInsets.all(24),
                   child: Column(
                     children: [
-                      const Text(
-                        '⚠️ تنبيه أمني',
-                        style: TextStyle(
-                          color: Colors.deepOrange,
-                          fontWeight: FontWeight.bold,
+                      NisabaTextField(
+                        controller: _nameController,
+                        labelText: 'الاسم الظاهر',
+                        prefixIcon: Icons.person_rounded,
+                        validator: (val) =>
+                            (val == null || val.length < 3) ? 'الاسم قصير جداً' : null,
+                      ),
+                      const SizedBox(height: 20),
+
+                      NisabaTextField(
+                        controller: _usernameController,
+                        labelText: 'معرف المستخدم (Username)',
+                        prefixIcon: Icons.alternate_email_rounded,
+                        errorText: _usernameError,
+                        onChanged: (_) {
+                          if (_usernameError != null) {
+                            setState(() => _usernameError = null);
+                          }
+                        },
+                        validator: (val) {
+                          if (val == null || val.length < 4) {
+                            return 'يجب أن يكون 4 أحرف على الأقل';
+                          }
+                          if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(val)) {
+                            return 'أحرف إنجليزية وأرقام فقط';
+                          }
+                          return null;
+                        },
+                      ),
+                      
+                      // Conditional Password Field for Social Login
+                      if (widget.isSocialLogin) ...[
+                        const SizedBox(height: 32),
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.errorContainer.withValues(alpha: 0.4),
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.shield_rounded, color: theme.colorScheme.error),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'تنبيه أمني',
+                                    style: theme.textTheme.titleMedium?.copyWith(
+                                      color: theme.colorScheme.error,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                'بما أنك سجلت الدخول باستخدام شبكات التواصل الاجتماعي، يرجى تعيين كلمة مرور لضمان أمان حسابك.',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              NisabaTextField(
+                                controller: _passController,
+                                labelText: 'تعيين كلمة مرور جديدة',
+                                prefixIcon: Icons.lock_rounded,
+                                isPassword: true,
+                                validator: (val) => (val == null || val.length < 6)
+                                    ? 'كلمة المرور مطلوبة (6+ أحرف)'
+                                    : null,
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      const Text(
-                        'بما أنك سجلت عبر Google/Apple، يجب تعيين كلمة مرور لهذا الحساب لضمان أمانك.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 12),
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _passController,
-                        decoration: const InputDecoration(
-                          labelText: 'تعيين كلمة مرور جديدة',
-                          border: OutlineInputBorder(),
-                        ),
-                        obscureText: true,
-                        validator: (val) => (val == null || val.length < 6)
-                            ? 'كلمة المرور مطلوبة (6+ أحرف)'
-                            : null,
-                      ),
+                      ],
                     ],
                   ),
-                ),
-                const SizedBox(height: 24),
-              ],
+                ).animate().fadeIn(delay: 300.ms).slideY(begin: 0.1, curve: Curves.easeOutBack),
 
-              ElevatedButton(
-                onPressed: _isLoading ? null : _submit,
-                child: _isLoading
-                    ? const CircularProgressIndicator()
-                    : const Text('حفظ وبدء الاستخدام'),
-              ),
-            ],
+                const SizedBox(height: 48),
+
+                NisabaButton(
+                  text: 'حفظ وبدء الاستخدام',
+                  isLoading: _isLoading,
+                  onPressed: _submit,
+                  icon: Icons.check_circle_rounded,
+                ).animate().fadeIn(delay: 400.ms).scale(curve: Curves.easeOutBack),
+                
+                const SizedBox(height: 32),
+              ],
+            ),
           ),
         ),
       ),

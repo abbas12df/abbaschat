@@ -18,178 +18,160 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isLargeScreen = ResponsiveUtils.isLargeScreen(context);
     final isTv = ResponsiveUtils.isTv(context);
-    final items = _buildItems();
+    final sections = _buildSections();
 
     return Scaffold(
       appBar: AppBar(title: const Text('الإعدادات')),
       body: isLargeScreen
-          ? _buildLargeSettingsView(context, items, isTv)
-          : _buildMobileSettingsView(context, items),
+          ? _buildLargeView(context, sections, isTv)
+          : _buildMobileView(context, sections),
     );
   }
 
-  List<_SettingItem> _buildItems() {
-    return const [
-      _SettingItem(
-        section: 'Account',
-        icon: Icons.person_outline,
-        title: 'Account',
-        subtitle: 'Email, password, and account controls',
-        destination: AccountSettingsScreen(),
+  List<_SettingsSection> _buildSections() {
+    return [
+      _SettingsSection(
+        title: 'الحساب',
+        items: [
+          _SettingItem(
+            icon: Icons.person_outline_rounded,
+            title: 'الحساب',
+            subtitle: 'البريد وكلمة المرور',
+            destination: const AccountSettingsScreen(),
+          ),
+        ],
       ),
-      _SettingItem(
-        section: 'Privacy & Security',
-        icon: Icons.lock_outline,
-        title: 'Privacy',
-        subtitle: 'Online status, typing, and read receipts',
-        destination: PrivacySettingsScreen(),
+      _SettingsSection(
+        title: 'الخصوصية والأمان',
+        items: [
+          _SettingItem(
+            icon: Icons.lock_outline_rounded,
+            title: 'الخصوصية',
+            subtitle: 'الحالة، الكتابة، إشعارات القراءة',
+            destination: const PrivacySettingsScreen(),
+          ),
+          _SettingItem(
+            icon: Icons.shield_outlined,
+            title: 'الأمان',
+            subtitle: 'قفل التطبيق وحماية الهوية',
+            destination: const SecuritySettingsScreen(),
+          ),
+        ],
       ),
-      _SettingItem(
-        section: 'Privacy & Security',
-        icon: Icons.shield_outlined,
-        title: 'Security',
-        subtitle: 'App lock and identity safety',
-        destination: SecuritySettingsScreen(),
+      _SettingsSection(
+        title: 'البيانات',
+        items: [
+          _SettingItem(
+            icon: Icons.folder_outlined,
+            title: 'التخزين والبيانات',
+            subtitle: 'إدارة البيانات المحلية',
+            destination: const StorageSettingsScreen(),
+          ),
+        ],
       ),
-      _SettingItem(
-        section: 'Data',
-        icon: Icons.storage_outlined,
-        title: 'Storage & Data',
-        subtitle: 'Local data and cleanup controls',
-        destination: StorageSettingsScreen(),
-      ),
-      _SettingItem(
-        section: 'App',
-        icon: Icons.notifications_none,
-        title: 'Notifications',
-        subtitle: 'Alerts, sounds, and vibration',
-        destination: NotificationsSettingsScreen(),
-      ),
-      _SettingItem(
-        section: 'App',
-        icon: Icons.palette_outlined,
-        title: 'Appearance',
-        subtitle: 'Theme and visual preferences',
-        destination: AppearanceSettingsScreen(),
-      ),
-      _SettingItem(
-        section: 'App',
-        icon: Icons.language,
-        title: 'Language',
-        subtitle: 'Application language',
-        destination: LanguageSettingsScreen(),
-      ),
-      _SettingItem(
-        section: 'App',
-        icon: Icons.info_outline,
-        title: 'About',
-        subtitle: 'Version and legal info',
-        destination: AboutScreen(),
+      _SettingsSection(
+        title: 'التطبيق',
+        items: [
+          _SettingItem(
+            icon: Icons.notifications_none_rounded,
+            title: 'الإشعارات',
+            subtitle: 'التنبيهات والأصوات',
+            destination: const NotificationsSettingsScreen(),
+          ),
+          _SettingItem(
+            icon: Icons.palette_outlined,
+            title: 'المظهر',
+            subtitle: 'السمة والتفضيلات',
+            destination: const AppearanceSettingsScreen(),
+          ),
+          _SettingItem(
+            icon: Icons.language_rounded,
+            title: 'اللغة',
+            subtitle: 'لغة التطبيق',
+            destination: const LanguageSettingsScreen(),
+          ),
+          _SettingItem(
+            icon: Icons.info_outline_rounded,
+            title: 'حول',
+            subtitle: 'الإصدار والمعلومات',
+            destination: const AboutScreen(),
+          ),
+        ],
       ),
     ];
   }
 
-  Widget _buildMobileSettingsView(
+  Widget _buildMobileView(
     BuildContext context,
-    List<_SettingItem> items,
+    List<_SettingsSection> sections,
   ) {
-    final sections = <String, List<_SettingItem>>{};
-    for (final item in items) {
-      sections.putIfAbsent(item.section, () => []).add(item);
-    }
+    final theme = Theme.of(context);
 
-    return SafeArea(
-      top: false,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: sections.entries.expand((entry) {
-          final header = [
+    return ListView.builder(
+      padding: const EdgeInsets.only(top: 8, bottom: 32),
+      itemCount: sections.length,
+      itemBuilder: (context, sectionIndex) {
+        final section = sections[sectionIndex];
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Section header
             Padding(
-              padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
               child: Text(
-                entry.key,
-                style: Theme.of(context).textTheme.bodySmall,
+                section.title,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
-          ];
+            // Items — no cards, just clean rows with dividers
+            ...section.items.asMap().entries.map((entry) {
+              final index = entry.key;
+              final item = entry.value;
+              final isLast = index == section.items.length - 1;
 
-          final tiles = entry.value
-              .map((item) => _SettingsListTile(item: item))
-              .toList();
-          return [...header, ...tiles];
-        }).toList(),
-      ),
+              return _SettingsRow(
+                item: item,
+                showDivider: !isLast,
+              );
+            }),
+          ],
+        );
+      },
     );
   }
 
-  Widget _buildLargeSettingsView(
+  Widget _buildLargeView(
     BuildContext context,
-    List<_SettingItem> items,
+    List<_SettingsSection> sections,
     bool isTv,
   ) {
+    final allItems = sections.expand((s) => s.items).toList();
+
     return FocusTraversalGroup(
       policy: OrderedTraversalPolicy(),
       child: CustomScrollView(
         slivers: [
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
-            sliver: SliverToBoxAdapter(
-              child: Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(18),
-                  gradient: LinearGradient(
-                    colors: [
-                      Theme.of(
-                        context,
-                      ).colorScheme.primaryContainer.withValues(alpha: 0.5),
-                      Theme.of(
-                        context,
-                      ).colorScheme.secondaryContainer.withValues(alpha: 0.3),
-                    ],
-                  ),
-                  border: Border.all(
-                    color: Theme.of(
-                      context,
-                    ).dividerColor.withValues(alpha: 0.35),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.tune_rounded,
-                      size: 28,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        isTv
-                            ? 'Use D-pad arrows to move and OK/Enter to open.'
-                            : 'Large-screen settings dashboard with quick access cards.',
-                        style: Theme.of(context).textTheme.bodyLarge,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+            padding: const EdgeInsets.all(24),
             sliver: SliverGrid(
-              delegate: SliverChildBuilderDelegate((context, index) {
-                final item = items[index];
-                return _SettingsGridCard(
-                  item: item,
-                  autofocus: isTv && index == 0,
-                );
-              }, childCount: items.length),
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final item = allItems[index];
+                  return _SettingsGridTile(
+                    item: item,
+                    autofocus: isTv && index == 0,
+                  );
+                },
+                childCount: allItems.length,
+              ),
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: isTv ? 3 : 2,
-                crossAxisSpacing: 14,
-                mainAxisSpacing: 14,
-                mainAxisExtent: isTv ? 100 : 90,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                mainAxisExtent: 88,
               ),
             ),
           ),
@@ -199,68 +181,93 @@ class SettingsScreen extends ConsumerWidget {
   }
 }
 
-class _SettingsListTile extends StatelessWidget {
-  final _SettingItem item;
+// ─── Row for mobile settings ─────────────────────────────────────────────────
 
-  const _SettingsListTile({required this.item});
+class _SettingsRow extends StatelessWidget {
+  final _SettingItem item;
+  final bool showDivider;
+
+  const _SettingsRow({
+    required this.item,
+    this.showDivider = true,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      label: '${item.title}: ${item.subtitle}',
-      button: true,
-      child: Card(
-        elevation: 0,
-        margin: const EdgeInsets.only(bottom: 8),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: Theme.of(context).dividerColor),
-        ),
-        child: ListTile(
-          leading: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Theme.of(
-                context,
-              ).colorScheme.primary.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              item.icon,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-          ),
-          title: Text(
-            item.title,
-            style: const TextStyle(fontWeight: FontWeight.w700),
-          ),
-          subtitle: Text(item.subtitle),
-          trailing: const Icon(Icons.chevron_right, size: 20),
+    final theme = Theme.of(context);
+
+    return Column(
+      children: [
+        InkWell(
           onTap: () => _open(context, item.destination),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            child: Row(
+              children: [
+                Icon(
+                  item.icon,
+                  size: 22,
+                  color: theme.iconTheme.color,
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.title,
+                        style: theme.textTheme.titleSmall,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        item.subtitle,
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 18,
+                  color: theme.colorScheme.outline,
+                ),
+              ],
+            ),
+          ),
         ),
-      ),
+        if (showDivider)
+          Divider(
+            height: 0.5,
+            indent: 58,
+            color: theme.dividerColor,
+          ),
+      ],
     );
   }
 }
 
-class _SettingsGridCard extends StatefulWidget {
+// ─── Grid tile for large screens ─────────────────────────────────────────────
+
+class _SettingsGridTile extends StatefulWidget {
   final _SettingItem item;
   final bool autofocus;
 
-  const _SettingsGridCard({required this.item, this.autofocus = false});
+  const _SettingsGridTile({required this.item, this.autofocus = false});
 
   @override
-  State<_SettingsGridCard> createState() => _SettingsGridCardState();
+  State<_SettingsGridTile> createState() => _SettingsGridTileState();
 }
 
-class _SettingsGridCardState extends State<_SettingsGridCard> {
+class _SettingsGridTileState extends State<_SettingsGridTile> {
   bool _focused = false;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Actions(
+    return FocusableActionDetector(
+      autofocus: widget.autofocus,
+      onFocusChange: (focused) => setState(() => _focused = focused),
       actions: {
         ActivateIntent: CallbackAction<ActivateIntent>(
           onInvoke: (_) {
@@ -269,90 +276,52 @@ class _SettingsGridCardState extends State<_SettingsGridCard> {
           },
         ),
       },
-      child: FocusableActionDetector(
-        autofocus: widget.autofocus,
-        onFocusChange: (focused) => setState(() => _focused = focused),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                theme.colorScheme.surface,
-                theme.colorScheme.surfaceContainerHighest.withValues(
-                  alpha: 0.35,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          color: _focused
+              ? theme.colorScheme.primary.withValues(alpha: 0.08)
+              : theme.colorScheme.surfaceContainerHighest,
+          border: _focused
+              ? Border.all(color: theme.colorScheme.primary, width: 1.5)
+              : null,
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => _open(context, widget.item.destination),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Icon(
+                  widget.item.icon,
+                  size: 22,
+                  color: theme.colorScheme.primary,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        widget.item.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        widget.item.subtitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
                 ),
               ],
-            ),
-            border: Border.all(
-              color: _focused
-                  ? theme.colorScheme.primary
-                  : theme.dividerColor.withValues(alpha: 0.35),
-              width: _focused ? 2.0 : 1.0,
-            ),
-            boxShadow: _focused
-                ? [
-                    BoxShadow(
-                      color: theme.colorScheme.primary.withValues(alpha: 0.22),
-                      blurRadius: 20,
-                      spreadRadius: 2,
-                    ),
-                  ]
-                : const [],
-          ),
-          child: Semantics(
-            label: '${widget.item.title}: ${widget.item.subtitle}',
-            button: true,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(16),
-              onTap: () => _open(context, widget.item.destination),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: theme.colorScheme.primary.withValues(
-                          alpha: 0.14,
-                        ),
-                      ),
-                      child: Icon(
-                        widget.item.icon,
-                        color: theme.colorScheme.primary,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            widget.item.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            widget.item.subtitle,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodySmall,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ),
           ),
         ),
@@ -361,19 +330,26 @@ class _SettingsGridCardState extends State<_SettingsGridCard> {
   }
 }
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
 void _open(BuildContext context, Widget destination) {
   Navigator.of(context).push(MaterialPageRoute(builder: (_) => destination));
 }
 
+class _SettingsSection {
+  final String title;
+  final List<_SettingItem> items;
+
+  const _SettingsSection({required this.title, required this.items});
+}
+
 class _SettingItem {
-  final String section;
   final IconData icon;
   final String title;
   final String subtitle;
   final Widget destination;
 
   const _SettingItem({
-    required this.section,
     required this.icon,
     required this.title,
     required this.subtitle,

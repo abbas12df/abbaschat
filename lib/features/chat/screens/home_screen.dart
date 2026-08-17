@@ -64,7 +64,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Q-Chat'),
+        title: const Text('Nisaba'),
         leading: Padding(
           padding: const EdgeInsets.all(8),
           child: InkWell(
@@ -387,13 +387,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(24),
       child: Ink(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(24),
           border: Border.all(
             color: Theme.of(context).dividerColor.withValues(alpha: 0.6),
+            width: 2.0,
           ),
           color: Theme.of(
             context,
@@ -761,97 +762,83 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     required Widget avatar,
   }) {
     final bool isSelected = isLargeScreen && selectedIndex == index;
+    final theme = Theme.of(context);
 
-    final tile = AnimatedContainer(
-      duration: const Duration(milliseconds: 140),
-      margin: EdgeInsets.symmetric(
-        horizontal: isLargeScreen ? 6 : 8,
-        vertical: isLargeScreen ? 4 : 2,
-      ),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        color: isSelected
-            ? Theme.of(
-                context,
-              ).colorScheme.primaryContainer.withValues(alpha: 0.55)
-            : Colors.transparent,
-        border: Border.all(
+    final tile = Column(
+      children: [
+        Material(
           color: isSelected
-              ? Theme.of(context).colorScheme.primary
-              : Theme.of(context).dividerColor.withValues(alpha: 0.35),
-          width: isSelected ? 1.6 : 1,
-        ),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: () => _openChat(chat),
-          onHover: isLargeScreen
-              ? (hovering) {
-                  if (hovering) {
-                    setState(() => _selectedChannelIndex = index);
+              ? theme.colorScheme.primaryContainer.withValues(alpha: 0.3)
+              : Colors.transparent,
+          child: InkWell(
+            onTap: () => _openChat(chat),
+            onHover: isLargeScreen
+                ? (hovering) {
+                    if (hovering) {
+                      setState(() => _selectedChannelIndex = index);
+                    }
                   }
-                }
-              : null,
-          onFocusChange: isLargeScreen
-              ? (focused) {
-                  if (focused) {
-                    setState(() => _selectedChannelIndex = index);
+                : null,
+            onFocusChange: isLargeScreen
+                ? (focused) {
+                    if (focused) {
+                      setState(() => _selectedChannelIndex = index);
+                    }
                   }
-                }
-              : null,
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: isLargeScreen ? 14 : 16,
-              vertical: isLargeScreen ? 14 : 12,
-            ),
-            child: Row(
-              children: [
-                avatar,
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                : null,
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: isLargeScreen ? 16 : 20,
+                vertical: 14,
+              ),
+              child: Row(
+                children: [
+                  avatar,
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        MessagePreview(
+                          content: messagePreview,
+                          isUnread: unreadCount > 0,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        displayName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              fontSize: isLargeScreen ? 17 : 16,
-                            ),
+                        _formatTime(chat.lastMessageTime),
+                        style: theme.textTheme.bodySmall,
                       ),
-                      const SizedBox(height: 4),
-                      MessagePreview(
-                        content: messagePreview,
-                        isUnread: unreadCount > 0,
-                      ),
+                      const SizedBox(height: 6),
+                      if (unreadCount > 0)
+                        UnreadBadge(count: unreadCount)
+                      else
+                        const SizedBox(height: 24),
                     ],
                   ),
-                ),
-                const SizedBox(width: 12),
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      _formatTime(chat.lastMessageTime),
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        fontSize: isLargeScreen ? 13 : 12,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    UnreadBadge(count: unreadCount),
-                  ],
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
-      ),
+        if (!isLargeScreen)
+          Divider(indent: 76, color: theme.dividerColor, height: 0.5),
+      ],
     );
 
     if (isLargeScreen) return tile;

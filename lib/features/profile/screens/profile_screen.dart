@@ -1,19 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'dart:convert';
-import 'package:crypto/crypto.dart'; // For fingerprinting
+import 'package:crypto/crypto.dart';
 import '../../auth/services/auth_service.dart';
 import '../../chat/models/user_model.dart';
 import '../../chat/repositories/chat_repository.dart';
 import '../../../core/widgets/shimmer_loaders.dart';
 import '../../settings/screens/settings_screen.dart';
 import '../../contacts/screens/contacts_screen.dart';
-import '../../../core/security/crypto_service.dart'; // Added
+import '../../../core/security/crypto_service.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -26,31 +25,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   UserModel? _currentUser;
   bool _isLoading = false;
 
-  @override
-  void initState() {
-    super.initState();
-  }
-
   Future<void> _updateName(String newName) async {
     if (newName.trim().isEmpty || _currentUser == null) return;
     setState(() => _isLoading = true);
     try {
       await ref
           .read(chatRepositoryProvider)
-          .updateUserProfile(
-            uid: _currentUser!.uid,
-            displayName: newName.trim(),
-          );
-
-      if (mounted)
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('تم تحديث الاسم')));
+          .updateUserProfile(uid: _currentUser!.uid, displayName: newName.trim());
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('تم تحديث الاسم')));
+      }
     } catch (e) {
-      if (mounted)
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('خطأ: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('خطأ: $e')));
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -58,24 +48,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Future<void> _updateUsername(String newUsername) async {
     if (newUsername.trim().isEmpty || _currentUser == null) return;
-    // Basic validation could be added here
     try {
       await ref
           .read(chatRepositoryProvider)
-          .updateUserProfile(
-            uid: _currentUser!.uid,
-            username: newUsername.trim(),
-          );
-
-      if (mounted)
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('تم تحديث اسم المستخدم')));
+          .updateUserProfile(uid: _currentUser!.uid, username: newUsername.trim());
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('تم تحديث اسم المستخدم')));
+      }
     } catch (e) {
-      if (mounted)
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('خطأ: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('خطأ: $e')));
+      }
     }
   }
 
@@ -85,16 +70,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       await ref
           .read(chatRepositoryProvider)
           .updateUserProfile(uid: _currentUser!.uid, bio: newBio.trim());
-
-      if (mounted)
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('تم تحديث النبذة')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('تم تحديث النبذة')));
+      }
     } catch (e) {
-      if (mounted)
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('خطأ: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('خطأ: $e')));
+      }
     }
   }
 
@@ -106,40 +90,43 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         maxWidth: 800,
         imageQuality: 70,
       );
-
       if (image != null && _currentUser != null) {
         setState(() => _isLoading = true);
         await ref
             .read(chatRepositoryProvider)
             .updateProfilePicture(_currentUser!.uid, File(image.path));
-
-        if (mounted)
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('تم تحديث الصورة')));
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('تم تحديث الصورة')));
+        }
       }
     } catch (e) {
-      if (mounted)
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('خطأ في تحميل الصورة: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('خطأ في تحميل الصورة: $e')));
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // --- Privacy Updates ---
-
-  // --- Privacy Updates Removed (Migrated to PrivacySettingsScreen) ---
-
   String _getIdentityFingerprint(String? publicKey) {
-    if (publicKey == null || publicKey.trim().isEmpty)
-      return 'غير متاح (لا يوجد مفتاح)';
+    if (publicKey == null || publicKey.trim().isEmpty) return 'غير متاح';
     final canonicalKey = publicKey.replaceAll(RegExp(r'\s+'), '');
     var bytes = utf8.encode(canonicalKey);
     var digest = sha256.convert(bytes);
     var hex = digest.toString().toUpperCase().substring(0, 16);
     return '${hex.substring(0, 4)}-${hex.substring(4, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}';
+  }
+
+  ImageProvider? _getProfileImageProvider(String? photoURL) {
+    if (photoURL == null || photoURL.isEmpty) return null;
+    try {
+      if (photoURL.startsWith('http')) return NetworkImage(photoURL);
+      return MemoryImage(base64Decode(photoURL));
+    } catch (e) {
+      return null;
+    }
   }
 
   @override
@@ -151,435 +138,239 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       return const ShimmerLoadingScreen(message: 'جاري تحميل الملف الشخصي...');
     }
 
-    return Builder(
-      builder: (context) {
-        final asyncUser = ref.watch(userProfileProvider(uid));
+    final asyncUser = ref.watch(userProfileProvider(uid));
+    
+    if (asyncUser.isLoading && _currentUser == null) {
+      return const ShimmerLoadingScreen(message: 'جاري تحميل الملف الشخصي...');
+    }
 
-        if (asyncUser.isLoading && _currentUser == null) {
-          return const ShimmerLoadingScreen(
-            message: 'جاري تحميل الملف الشخصي...',
-          );
-        }
+    if (asyncUser.hasValue) {
+      _currentUser = asyncUser.value;
+    }
 
-        if (asyncUser.hasValue) {
-          _currentUser = asyncUser.value;
-        }
+    if (_currentUser == null) {
+      return const Scaffold(
+        body: Center(child: Text('خطأ في تحميل البيانات')),
+      );
+    }
 
-        if (_currentUser == null) {
-          return const Scaffold(
-            body: Center(child: Text("خطأ في تحميل البيانات")),
-          );
-        }
-
-        return Scaffold(
-          backgroundColor: theme.scaffoldBackgroundColor,
-          body: CustomScrollView(
-            slivers: [
-              // 1. Sliver App Bar with Hero Profile Image
-              SliverAppBar(
-                expandedHeight: 250,
-                pinned: true,
-                backgroundColor: theme.scaffoldBackgroundColor,
-                flexibleSpace: FlexibleSpaceBar(
-                  background: Stack(
-                    fit: StackFit.expand,
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('الملف الشخصي'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            ),
+          ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          ListView(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            children: [
+              // Avatar Section
+              Center(
+                child: GestureDetector(
+                  onTap: _updateProfileImage,
+                  child: Stack(
+                    alignment: Alignment.bottomRight,
                     children: [
-                      // Blurred Background or Gradient
+                      Hero(
+                        tag: 'profile_pic_${_currentUser!.uid}',
+                        child: CircleAvatar(
+                          radius: 56, // Reduced from 70
+                          backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                          backgroundImage: _getProfileImageProvider(_currentUser!.photoURL),
+                          child: _currentUser!.photoURL == null
+                              ? Icon(Icons.person, size: 48, color: theme.iconTheme.color)
+                              : null,
+                        ),
+                      ),
                       Container(
+                        padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              theme.primaryColor.withValues(alpha: 0.1),
-                              theme.scaffoldBackgroundColor,
-                            ],
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                          ),
+                          color: theme.colorScheme.primary,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: theme.scaffoldBackgroundColor, width: 2),
                         ),
-                      ),
-                      // Loading Overlay (positioned at top)
-                      if (_isLoading)
-                        const Positioned(
-                          top: 0,
-                          left: 0,
-                          right: 0,
-                          child: LinearProgressIndicator(),
-                        ),
-                      Center(
-                        child: Semantics(
-                          label: 'صورة الملف الشخصي. اضغط لتغيير الصورة',
-                          button: true,
-                          child: GestureDetector(
-                            onTap: () => _updateProfileImage(),
-                            child: Hero(
-                              tag: 'profile_pic_${_currentUser!.uid}',
-                              child: Container(
-                                width: 140,
-                                height: 140,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: theme.primaryColor,
-                                    width: 3,
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: theme.primaryColor.withValues(
-                                        alpha: 0.3,
-                                      ),
-                                      blurRadius: 20,
-                                      spreadRadius: 2,
-                                    ),
-                                  ],
-                                ),
-                                child: CircleAvatar(
-                                  radius: 70,
-                                  backgroundImage: _getProfileImageProvider(
-                                    _currentUser!.photoURL,
-                                  ),
-                                  backgroundColor: Theme.of(
-                                    context,
-                                  ).colorScheme.surfaceVariant,
-                                  child: _currentUser!.photoURL == null
-                                      ? Icon(
-                                          Icons.person,
-                                          size: 70,
-                                          color:
-                                              Theme.of(
-                                                context,
-                                              ).iconTheme.color ??
-                                              Colors.grey,
-                                        )
-                                      : null,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ).animate().scale(
-                        curve: Curves.easeOutBack,
-                        duration: 600.ms,
-                      ),
-
-                      // Edit Icon Overlay – RTL-safe positioning via Align
-                      Align(
-                        alignment: const Alignment(0.22, 0.45),
-                        child: Semantics(
-                          label: 'تغيير الصورة',
-                          button: true,
-                          child: CircleAvatar(
-                            radius: 22,
-                            backgroundColor: theme.cardColor,
-                            child: IconButton(
-                              icon: Icon(
-                                Icons.camera_alt,
-                                size: 18,
-                                color: theme.primaryColor,
-                              ),
-                              onPressed: _updateProfileImage,
-                              tooltip: 'تغيير الصورة',
-                              padding: EdgeInsets.zero,
-                            ),
-                          ).animate().fadeIn(delay: 400.ms),
-                        ),
+                        child: const Icon(Icons.camera_alt, size: 16, color: Colors.white),
                       ),
                     ],
                   ),
                 ),
-                actions: [
-                  IconButton(
-                    icon: const Icon(Icons.settings),
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const SettingsScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                ],
               ),
+              const SizedBox(height: 20),
 
-              // 2. Info Content
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
+              // Name
+              Center(
+                child: GestureDetector(
+                  onTap: () => _showEditDialog('الاسم', _currentUser!.displayName, _updateName),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Name (Editable)
-                      GestureDetector(
-                        onTap: () => _showEditDialog(
-                          context,
-                          'الاسم',
-                          _currentUser!.displayName,
-                          _updateName,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Flexible(
-                              child: Text(
-                                _currentUser!.displayName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.headlineMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color:
-                                      Theme.of(context).brightness ==
-                                          Brightness.dark
-                                      ? Colors.white
-                                      : null,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Icon(
-                              Icons.edit,
-                              size: 16,
-                              color:
-                                  Theme.of(context).brightness ==
-                                      Brightness.dark
-                                  ? Colors.white70
-                                  : theme.iconTheme.color,
-                            ),
-                          ],
-                        ),
-                      ).animate().fadeIn().slideY(begin: 0.5, end: 0),
-
-                      const SizedBox(height: 32),
-
-                      // --- Info Section ---
-                      _buildSectionHeader('المعلومات الشخصية'),
-                      _buildProfileOption(
-                        context,
-                        icon: Icons.contacts,
-                        title: 'جهات الاتصال',
-                        subtitle: 'إدارة جهات الاتصال والمجموعات',
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const ContactsScreen(),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      _buildInfoTile(
-                        icon: Icons.alternate_email,
-                        title: 'اسم المستخدم',
-                        value: '@${_currentUser!.username ?? "غير محدد"}',
-                        onTap: () => _showEditDialog(
-                          context,
-                          'اسم المستخدم',
-                          _currentUser!.username ?? '',
-                          _updateUsername,
-                        ),
-                      ),
-                      _buildInfoTile(
-                        icon: Icons.info_outline,
-                        title: 'نبذة',
-                        value: _currentUser!.bio?.isNotEmpty == true
-                            ? _currentUser!.bio!
-                            : 'رقمي، حسابي، هويتي.',
-                        onTap: () => _showEditDialog(
-                          context,
-                          'النبذة',
-                          _currentUser!.bio ?? '',
-                          _updateBio,
-                          maxLines: 3,
-                        ),
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // --- Identity & Security Section ---
-                      _buildSectionHeader('الهوية والأمان'),
-                      _buildIdentityCard(theme),
-
-                      const SizedBox(height: 24),
-
-                      // Privacy Settings moved to dedicated screen
-                      const SizedBox(height: 40),
-
-                      // --- Logout Section ---
-                      Semantics(
-                        label: 'تسجيل الخروج',
-                        button: true,
-                        child:
-                            Card(
-                                  elevation: 0,
-                                  color: theme.colorScheme.errorContainer
-                                      .withValues(alpha: 0.1),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(16),
-                                    side: BorderSide(
-                                      color: theme.colorScheme.error.withValues(
-                                        alpha: 0.2,
-                                      ),
-                                    ),
-                                  ),
-                                  child: ListTile(
-                                    leading: Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        color: theme.colorScheme.errorContainer,
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Icon(
-                                        Icons.logout,
-                                        color: theme.colorScheme.error,
-                                      ),
-                                    ),
-                                    title: Text(
-                                      'تسجيل الخروج',
-                                      style: TextStyle(
-                                        color: theme.colorScheme.error,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    onTap: _confirmLogout,
-                                  ),
-                                )
-                                .animate()
-                                .fadeIn(delay: 400.ms)
-                                .slideY(begin: 0.5, end: 0),
-                      ),
-
-                      const SizedBox(height: 40),
-
-                      // Footer
                       Text(
-                        'Secure ID: ${_currentUser!.uid.substring(0, 8)}...',
-                        style: theme.textTheme.bodySmall,
+                        _currentUser!.displayName,
+                        style: theme.textTheme.headlineMedium,
                       ),
-                      SizedBox(
-                        height: MediaQuery.of(context).viewPadding.bottom + 20,
-                      ),
+                      const SizedBox(width: 8),
+                      Icon(Icons.edit, size: 16, color: theme.colorScheme.primary),
                     ],
                   ),
+                ),
+              ),
+              
+              const SizedBox(height: 8),
+              
+              Center(
+                child: Text(
+                  FirebaseAuth.instance.currentUser?.email ?? '',
+                  style: theme.textTheme.bodyMedium?.copyWith(color: theme.textTheme.bodySmall?.color),
+                ),
+              ),
+
+              const SizedBox(height: 40),
+
+              // Info Section
+              _buildSectionHeader('المعلومات الشخصية', theme),
+              _buildListRow(
+                icon: Icons.contacts_outlined,
+                title: 'جهات الاتصال',
+                subtitle: 'إدارة جهات الاتصال والمجموعات',
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ContactsScreen()),
+                ),
+                theme: theme,
+              ),
+              _buildListRow(
+                icon: Icons.alternate_email,
+                title: 'اسم المستخدم',
+                subtitle: '@${_currentUser!.username ?? "غير محدد"}',
+                onTap: () => _showEditDialog('اسم المستخدم', _currentUser!.username ?? '', _updateUsername),
+                showEditIcon: true,
+                theme: theme,
+              ),
+              _buildListRow(
+                icon: Icons.info_outline,
+                title: 'النبذة',
+                subtitle: _currentUser!.bio?.isNotEmpty == true ? _currentUser!.bio! : 'رقمي، حسابي، هويتي.',
+                onTap: () => _showEditDialog('النبذة', _currentUser!.bio ?? '', _updateBio, maxLines: 3),
+                showEditIcon: true,
+                theme: theme,
+                showDivider: false,
+              ),
+
+              const SizedBox(height: 32),
+
+              // Security Section
+              _buildSectionHeader('الهوية والأمان', theme),
+              _buildIdentityCard(theme),
+
+              const SizedBox(height: 48),
+
+              // Logout
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.logout, color: theme.colorScheme.error),
+                title: Text(
+                  'تسجيل الخروج',
+                  style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.error),
+                ),
+                onTap: _confirmLogout,
+              ),
+              
+              const SizedBox(height: 24),
+              Center(
+                child: Text(
+                  'ID: ${_currentUser!.uid.substring(0, 8)}...',
+                  style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.outline),
                 ),
               ),
             ],
           ),
-        );
-      },
+          if (_isLoading)
+            const Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: LinearProgressIndicator(),
+            ),
+        ],
+      ),
     );
   }
 
-  // --- Widgets ---
-
-  Widget _buildSectionHeader(String title) {
-    return Align(
-      alignment: AlignmentDirectional.centerEnd,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Text(
-          title,
-          style: TextStyle(
-            color: Theme.of(context).textTheme.bodySmall?.color,
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-          ),
+  Widget _buildSectionHeader(String title, ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Text(
+        title,
+        style: theme.textTheme.labelLarge?.copyWith(
+          color: theme.colorScheme.primary,
         ),
       ),
-    ).animate().fadeIn(delay: 200.ms).slideX();
+    );
   }
 
-  Widget _buildInfoTile({
-    required IconData icon,
-    required String title,
-    required String value,
-    required VoidCallback onTap,
-  }) {
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Theme.of(context).dividerColor),
-      ),
-      child: ListTile(
-        leading: Icon(icon, color: Theme.of(context).iconTheme.color),
-        title: Text(title, style: Theme.of(context).textTheme.bodyLarge),
-        subtitle: Text(
-          value,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
-        trailing: Icon(
-          Icons.edit,
-          size: 16,
-          color: Theme.of(context).iconTheme.color,
-        ),
-        onTap: () {
-          HapticFeedback.selectionClick();
-          onTap();
-        },
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    ).animate().fadeIn(delay: 250.ms);
-  }
-
-  Widget _buildProfileOption(
-    BuildContext context, {
+  Widget _buildListRow({
     required IconData icon,
     required String title,
     required String subtitle,
     required VoidCallback onTap,
+    required ThemeData theme,
+    bool showEditIcon = false,
+    bool showDivider = true,
   }) {
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Theme.of(context).dividerColor),
-      ),
-      child: ListTile(
-        leading: Icon(icon, color: Theme.of(context).iconTheme.color),
-        title: Text(title),
-        subtitle: Text(subtitle, style: Theme.of(context).textTheme.bodyMedium),
-        onTap: onTap,
-        trailing: Icon(
-          Icons.chevron_right,
-          size: 20,
-          color: Theme.of(context).iconTheme.color,
+    return Column(
+      children: [
+        InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+            child: Row(
+              children: [
+                Icon(icon, size: 22, color: theme.iconTheme.color),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: theme.textTheme.titleSmall),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: theme.textTheme.bodySmall,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                if (showEditIcon)
+                  Icon(Icons.edit, size: 16, color: theme.colorScheme.primary)
+                else
+                  Icon(Icons.chevron_right_rounded, size: 18, color: theme.colorScheme.outline),
+              ],
+            ),
+          ),
         ),
-      ),
+        if (showDivider)
+          Divider(indent: 46, color: theme.dividerColor),
+      ],
     );
   }
 
   Widget _buildIdentityCard(ThemeData theme) {
     return FutureBuilder<String?>(
-      future: CryptoService().getPrivateKeyPem().then(
-        (_) => CryptoService().getPublicKeyPem(),
-      ),
+      future: CryptoService().getPrivateKeyPem().then((_) => CryptoService().getPublicKeyPem()),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 24),
-            child: Center(child: CircularProgressIndicator()),
-          );
-        }
-
-        if (snapshot.hasError) {
-          return Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: theme.cardColor,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Theme.of(context).dividerColor),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.error_outline, color: theme.colorScheme.error),
-                const SizedBox(width: 12),
-                const Expanded(child: Text('تعذر تحميل البصمة التعريفية')),
-              ],
-            ),
-          );
+          return const Center(child: CircularProgressIndicator());
         }
 
         final publicKey = snapshot.data;
@@ -588,93 +379,50 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         return Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: theme.cardColor,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Theme.of(context).dividerColor),
-            boxShadow: [
-              BoxShadow(
-                color: Theme.of(context).colorScheme.surfaceVariant,
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
+            color: theme.colorScheme.primary.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: theme.colorScheme.primary.withValues(alpha: 0.2),
+            ),
           ),
           child: Column(
             children: [
               Row(
                 children: [
-                  Icon(
-                    Icons.fingerprint,
-                    color: Theme.of(context).iconTheme.color,
-                  ),
+                  Icon(Icons.fingerprint, size: 20, color: theme.colorScheme.primary),
                   const SizedBox(width: 8),
-                  const Expanded(
-                    child: Text(
-                      'البصمة التعريفية',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                  Icon(
-                    Icons.shield_outlined,
-                    color: Theme.of(context).iconTheme.color,
-                    size: 18,
-                  ),
+                  Text('البصمة التعريفية', style: theme.textTheme.titleSmall),
                 ],
               ),
               const SizedBox(height: 12),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: theme.scaffoldBackgroundColor,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: SelectableText(
-                  fingerprint,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontFamily: 'Courier',
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.5,
-                  ),
+              SelectableText(
+                fingerprint,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontFamily: 'Courier',
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.2,
                 ),
               ),
               const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: () {
-                      Clipboard.setData(ClipboardData(text: fingerprint));
-                      HapticFeedback.lightImpact();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('تم نسخ البصمة التعريفية'),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.copy, size: 16),
-                    label: const Text('نسخ'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                    ),
-                  ),
-                ],
+              OutlinedButton.icon(
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: fingerprint));
+                  HapticFeedback.lightImpact();
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(const SnackBar(content: Text('تم نسخ البصمة التعريفية')));
+                },
+                icon: const Icon(Icons.copy, size: 16),
+                label: const Text('نسخ'),
               ),
             ],
           ),
-        ).animate().fadeIn(delay: 250.ms).slideY(begin: 0.2, end: 0);
+        );
       },
     );
   }
 
-  Future<void> _showEditDialog(
-    BuildContext context,
-    String label,
-    String initialValue,
-    Function(String) onSave, {
-    int maxLines = 1,
-  }) async {
+  Future<void> _showEditDialog(String label, String initialValue, Function(String) onSave, {int maxLines = 1}) async {
     final controller = TextEditingController(text: initialValue);
     await showDialog(
       context: context,
@@ -728,19 +476,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (shouldLogout == true) {
       await ref.read(authServiceProvider).signOut();
       if (mounted) Navigator.of(context).pop();
-    }
-  }
-
-  ImageProvider? _getProfileImageProvider(String? photoURL) {
-    if (photoURL == null || photoURL.isEmpty) return null;
-    try {
-      if (photoURL.startsWith('http')) {
-        return NetworkImage(photoURL);
-      } else {
-        return MemoryImage(base64Decode(photoURL));
-      }
-    } catch (e) {
-      return null;
     }
   }
 }

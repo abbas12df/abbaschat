@@ -52,7 +52,7 @@ class UserProfileBottomSheet extends ConsumerWidget {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: Colors.grey.withOpacity(0.3),
+                    color: theme.colorScheme.outline.withOpacity(0.3),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -120,14 +120,12 @@ class UserProfileBottomSheet extends ConsumerWidget {
                                           backgroundImage: _getImageProvider(
                                             photo,
                                           ),
-                                          backgroundColor: Colors.grey.shade200,
+                                          backgroundColor: theme.colorScheme.surfaceContainerHighest,
                                           child: photo == null
                                               ? Icon(
                                                   Icons.person,
                                                   size: 60,
-                                                  color:
-                                                      theme.iconTheme.color ??
-                                                      Colors.grey,
+                                                  color: theme.iconTheme.color,
                                                 )
                                               : null,
                                         ),
@@ -361,7 +359,7 @@ class UserProfileBottomSheet extends ConsumerWidget {
                                 ),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withOpacity(0.05),
+                                    color: theme.colorScheme.outline.withOpacity(0.1),
                                     blurRadius: 10,
                                     offset: const Offset(0, 4),
                                   ),
@@ -528,8 +526,12 @@ class UserProfileBottomSheet extends ConsumerWidget {
                                 .watchChatData(roomId!),
                             builder: (context, snapshot) {
                               final room = snapshot.data;
-                              final isEnabled =
+                              final isOutgoing =
                                   room?.isOutgoingProtectionEnabled ?? false;
+                              final isRemote =
+                                  room?.isRemoteProtectionEnforced ?? false;
+                              final isEnabled = isOutgoing || isRemote;
+                              final canToggle = !isRemote;
 
                               return Container(
                                 margin: const EdgeInsets.only(bottom: 24),
@@ -550,7 +552,7 @@ class UserProfileBottomSheet extends ConsumerWidget {
                                   ),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: Colors.black.withOpacity(0.05),
+                                      color: theme.colorScheme.outline.withOpacity(0.1),
                                       blurRadius: 10,
                                       offset: const Offset(0, 4),
                                     ),
@@ -582,20 +584,22 @@ class UserProfileBottomSheet extends ConsumerWidget {
                                     ),
                                   ),
                                   subtitle: Text(
-                                    isEnabled
-                                        ? 'الطرف الآخر ممنوع من التصوير (وأنت أيضاً)'
-                                        : 'السماح للطرف الآخر بتصوير الشاشة',
+                                    isRemote
+                                        ? 'الطرف الآخر فرض منع التصوير لهذه المحادثة.'
+                                        : (isEnabled
+                                            ? 'الطرف الآخر ممنوع من التصوير (وأنت أيضاً)'
+                                            : 'السماح للطرف الآخر بتصوير الشاشة'),
                                     style: TextStyle(
                                       fontSize: 12,
                                       color: theme.textTheme.bodySmall?.color,
                                     ),
                                   ),
                                   value: isEnabled,
-                                  onChanged: (val) async {
+                                  onChanged: canToggle ? (val) async {
                                     await ref
                                         .read(chatRepositoryProvider)
                                         .requestPeerProtection(roomId!, val);
-                                  },
+                                  } : null,
                                   activeColor: Colors.red,
                                 ),
                               );

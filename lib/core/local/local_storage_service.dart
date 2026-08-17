@@ -228,6 +228,15 @@ class LocalStorageService {
       }
 
       if (box.isOpen) {
+        // Prevent overwriting a tombstone
+        final existing = box.get(message['id']);
+        if (existing != null) {
+          final existingMap = Map<String, dynamic>.from(existing);
+          if (existingMap['isDeleted'] == true) {
+            return; // It was deleted locally, do not resurrect
+          }
+        }
+
         // DEBUG: Log imageUrl before saving for images
         if (message['type'] == 'image' && message['imageUrl'] != null) {
           print(
@@ -270,12 +279,39 @@ class LocalStorageService {
         return [];
       }
 
-      return box.values.map((e) => Map<String, dynamic>.from(e)).toList()..sort(
-        (a, b) => (b['timestamp'] as int).compareTo(a['timestamp'] as int),
-      );
+      return box.values
+          .map((e) => Map<String, dynamic>.from(e))
+          .where((m) => m['isDeleted'] != true)
+          .toList()
+        ..sort(
+          (a, b) => (b['timestamp'] as int).compareTo(a['timestamp'] as int),
+        );
     } catch (e) {
       print('DEBUG: Error getting messages for $chatId: $e');
       return [];
+    }
+  }
+
+  Future<Map<String, dynamic>?> getMessageRaw(
+    String userId,
+    String chatId,
+    String messageId,
+  ) async {
+    try {
+      final boxName = '$messagesBoxPrefix${userId}_$chatId';
+      var box = await _openSecureBox(boxName);
+      if (!box.isOpen) box = await _openSecureBox(boxName);
+      
+      if (box.isOpen) {
+        final data = box.get(messageId);
+        if (data != null) {
+          return Map<String, dynamic>.from(data);
+        }
+      }
+      return null;
+    } catch (e) {
+      print('DEBUG: Error in getMessageRaw: $e');
+      return null;
     }
   }
 
@@ -306,6 +342,7 @@ class LocalStorageService {
 
       final allMessages = box.values
           .map((e) => Map<String, dynamic>.from(e))
+          .where((m) => m['isDeleted'] != true)
           .toList();
 
       // Sort Descending (Newest first)
@@ -338,12 +375,14 @@ class LocalStorageService {
       // Yield initial data immediately
       try {
         if (box.isOpen) {
-          final initialData =
-              box.values.map((e) => Map<String, dynamic>.from(e)).toList()
-                ..sort(
-                  (a, b) =>
-                      (b['timestamp'] as int).compareTo(a['timestamp'] as int),
-                );
+          final initialData = box.values
+              .map((e) => Map<String, dynamic>.from(e))
+              .where((m) => m['isDeleted'] != true)
+              .toList()
+            ..sort(
+              (a, b) =>
+                  (b['timestamp'] as int).compareTo(a['timestamp'] as int),
+            );
           yield initialData;
         } else {
           yield [];
@@ -356,7 +395,10 @@ class LocalStorageService {
       yield* box.watch().map((_) {
         if (!box.isOpen) return <Map<String, dynamic>>[];
         try {
-          return box.values.map((e) => Map<String, dynamic>.from(e)).toList()
+          return box.values
+              .map((e) => Map<String, dynamic>.from(e))
+              .where((m) => m['isDeleted'] != true)
+              .toList()
             ..sort(
               (a, b) =>
                   (b['timestamp'] as int).compareTo(a['timestamp'] as int),
@@ -433,7 +475,19 @@ class LocalStorageService {
       }
 
       if (box.isOpen) {
-        await box.delete(messageId);
+        // Use tombstone instead of deleting to prevent resurrection during sync
+        final existing = box.get(messageId);
+        if (existing != null) {
+          final existingMap = Map<String, dynamic>.from(existing);
+          existingMap['isDeleted'] = true;
+          await box.put(messageId, existingMap);
+        } else {
+          await box.put(messageId, {
+            'id': messageId,
+            'isDeleted': true,
+            'timestamp': DateTime.now().millisecondsSinceEpoch,
+          });
+        }
       }
     } catch (e) {
       print('DEBUG: Error deleting message: $e');

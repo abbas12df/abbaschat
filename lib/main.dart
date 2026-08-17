@@ -3,11 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_options.dart';
-import 'core/theme/app_theme.dart';
+import 'core/theme/nisaba_theme.dart';
 import 'features/auth/screens/auth_wrapper.dart';
 import 'core/services/notification_service.dart';
 import 'core/services/deep_link_service.dart';
 
+import 'package:hive_flutter/hive_flutter.dart';
 import 'core/local/local_storage_service.dart';
 import 'core/security/crypto_service.dart';
 import 'core/security/secure_storage_service.dart';
@@ -34,6 +35,7 @@ void main() async {
   final secureStorage = SecureStorageService();
   final localStorage = LocalStorageService(secureStorage);
   await localStorage.init();
+  await Hive.openBox('global_app_settings');
 
   // Apply saved global screenshot protection
   await ScreenSecurityService.applyGlobalProtection();
@@ -102,8 +104,8 @@ class _MyAppState extends ConsumerState<MyApp> {
       navigatorKey: navigatorKey, // Add navigator key for deep linking
       title: 'Nisaba',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme(),
-      darkTheme: AppTheme.darkTheme(),
+      theme: NisabaTheme.lightTheme(),
+      darkTheme: NisabaTheme.darkTheme(),
       themeMode: themeMode,
       home: const AppLockManager(child: AuthWrapper()),
       // locale: const Locale('ar', 'SA'), // Removed to allow dynamic language switching

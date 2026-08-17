@@ -47,6 +47,7 @@ class _QwenChatScreenState extends ConsumerState<QwenChatScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(qwenProvider);
+    final theme = Theme.of(context);
 
     return Scaffold(
       appBar: AppBar(
@@ -101,8 +102,8 @@ class _QwenChatScreenState extends ConsumerState<QwenChatScreen> {
                           ),
                           decoration: BoxDecoration(
                             color: isUser
-                                ? Colors.deepPurpleAccent
-                                : Colors.grey[200],
+                                ? theme.colorScheme.primary
+                                : theme.colorScheme.surfaceContainerHighest,
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Column(
@@ -126,8 +127,8 @@ class _QwenChatScreenState extends ConsumerState<QwenChatScreen> {
                                   msg['content'] ?? '',
                                   style: TextStyle(
                                     color: isUser
-                                        ? Colors.white
-                                        : Colors.black87,
+                                        ? theme.colorScheme.onPrimary
+                                        : theme.colorScheme.onSurface,
                                   ),
                                 ),
                             ],
@@ -145,11 +146,11 @@ class _QwenChatScreenState extends ConsumerState<QwenChatScreen> {
           if (state.error != null)
             Container(
               width: double.infinity,
-              color: Colors.red[100],
+              color: theme.colorScheme.errorContainer,
               padding: const EdgeInsets.all(8.0),
               child: Text(
                 '${state.error}',
-                style: const TextStyle(color: Colors.red),
+                style: TextStyle(color: theme.colorScheme.onErrorContainer),
                 textAlign: TextAlign.center,
               ),
             ),
@@ -194,8 +195,8 @@ class _QwenChatScreenState extends ConsumerState<QwenChatScreen> {
                   icon: Icon(
                     Icons.image,
                     color: _selectedImage != null
-                        ? Colors.deepPurpleAccent
-                        : Colors.grey,
+                        ? theme.colorScheme.primary
+                        : theme.iconTheme.color,
                   ),
                   onPressed: _pickImage,
                 ),
@@ -211,7 +212,7 @@ class _QwenChatScreenState extends ConsumerState<QwenChatScreen> {
                         borderSide: BorderSide.none,
                       ),
                       filled: true,
-                      fillColor: Colors.grey[100],
+                      fillColor: theme.colorScheme.surfaceContainerHighest,
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 20,
                         vertical: 10,
@@ -222,9 +223,9 @@ class _QwenChatScreenState extends ConsumerState<QwenChatScreen> {
                 ),
                 const SizedBox(width: 8),
                 CircleAvatar(
-                  backgroundColor: Colors.deepPurpleAccent,
+                  backgroundColor: theme.colorScheme.primary,
                   child: IconButton(
-                    icon: const Icon(Icons.send, color: Colors.white),
+                    icon: Icon(Icons.send, color: theme.colorScheme.onPrimary),
                     onPressed: _sendMessage,
                   ),
                 ),

@@ -5,6 +5,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'auth_wrapper.dart'; // To navigate back to main check logic
 import '../services/auth_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/widgets/nisaba_button.dart';
 
 class VerifyEmailScreen extends ConsumerStatefulWidget {
   const VerifyEmailScreen({super.key});
@@ -128,8 +129,8 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
                     size: 100,
                     color: Colors.amber,
                   )
-                  .animate(onPlay: (c) => c.repeat(reverse: true))
-                  .scaleXY(begin: 1, end: 1.1, duration: 1.seconds),
+                  .animate()
+                  .scale(duration: 800.ms, curve: Curves.easeOutCubic),
               const SizedBox(height: 32),
 
               const Text(
@@ -146,19 +147,20 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
 
               const SizedBox(height: 48),
 
-              ElevatedButton.icon(
-                onPressed: _canResend ? _resendEmail : null,
-                icon: const Icon(Icons.refresh),
-                label: Text(
-                  _canResend
-                      ? 'إعادة الإرسال'
-                      : 'انتظر $_secondsRemaining ثانية',
-                ),
+              NisabaButton(
+                onPressed: _canResend ? _resendEmail : () {},
+                icon: Icons.refresh,
+                text: _canResend
+                    ? 'إعادة الإرسال'
+                    : 'انتظر $_secondsRemaining ثانية',
               ),
 
-              TextButton(
+              const SizedBox(height: 16),
+
+              NisabaButton(
                 onPressed: () => _checkEmailVerified(),
-                child: const Text('لقد قمت بالتفعيل، تحديث الآن'),
+                type: NisabaButtonType.text,
+                text: 'لقد قمت بالتفعيل، تحديث الآن',
               ),
             ],
           ),

@@ -47,6 +47,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
   @override
   Widget build(BuildContext context) {
     final aiState = ref.watch(aiProvider);
+    final theme = Theme.of(context);
 
     return Scaffold(
       appBar: AppBar(title: const Text('AI Assistant')),
@@ -69,7 +70,9 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                     margin: const EdgeInsets.symmetric(vertical: 4),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: isUser ? Colors.blueAccent : Colors.grey[300],
+                      color: isUser 
+                          ? theme.colorScheme.primary 
+                          : theme.colorScheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Column(
@@ -92,7 +95,9 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                           Text(
                             msg['content'] ?? '',
                             style: TextStyle(
-                              color: isUser ? Colors.white : Colors.black,
+                              color: isUser 
+                                  ? theme.colorScheme.onPrimary 
+                                  : theme.colorScheme.onSurface,
                             ),
                           ),
                       ],

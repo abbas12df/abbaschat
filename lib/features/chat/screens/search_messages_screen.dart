@@ -96,10 +96,12 @@ class _SearchMessagesScreenState extends ConsumerState<SearchMessagesScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : isEmpty
-          ? const Center(
+          ? Center(
               child: Text(
                 'اكتب للبحث عن رسائل',
-                style: TextStyle(color: Colors.grey),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             )
           : _filteredMessages.isEmpty
@@ -113,10 +115,14 @@ class _SearchMessagesScreenState extends ConsumerState<SearchMessagesScreen> {
 
                 return ListTile(
                   leading: CircleAvatar(
-                    backgroundColor: isMe ? Colors.blue : Colors.grey[300],
+                    backgroundColor: isMe
+                        ? Theme.of(context).colorScheme.primary
+                        : Theme.of(context).colorScheme.surfaceContainerHighest,
                     child: Icon(
                       isMe ? Icons.person : Icons.person_outline,
-                      color: isMe ? Colors.white : Colors.black54,
+                      color: isMe
+                          ? Theme.of(context).colorScheme.onPrimary
+                          : Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
                   title: Text(
