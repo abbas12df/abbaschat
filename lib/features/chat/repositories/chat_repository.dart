@@ -85,6 +85,8 @@ class ChatRepository {
 
   // Sync Cache & Deduplication
   final Map<String, DateTime> _lastGroupSyncTime = {};
+  final Map<String, DateTime> _lastSyncRequestHandled = {}; // Sync rate limit
+  final Map<String, DateTime> _lastSyncRequestSent = {}; // Pull throttle
   final Map<String, Future<void>> _activeGroupSyncs = {}; // Deduplication
 
   // File Transfer State (Chunking)
@@ -965,12 +967,12 @@ class ChatRepository {
             await _local.updateConversation(currentUser.uid, roomId, room);
           }
 
-          // ط¥ط¶ط§ظپط© ط±ط³ط§ظ„ط© ظ†ط¸ط§ظ… ظ…ط­ظ„ظٹط© (System Message)
+          // إضافة رسالة نظام محلية (System Message)
           final addedIds = List<String>.from(messagePayload['added_ids'] ?? []);
           if (addedIds.isNotEmpty) {
             await _saveLocalSystemMessage(
               roomId,
-              'طھظ…طھ ط¥ط¶ط§ظپط© ط£ط¹ط¶ط§ط، ط¬ط¯ط¯',
+              'تمت إضافة أعضاء جدد',
             );
           }
 
@@ -1043,12 +1045,12 @@ class ChatRepository {
               debugPrint('DEBUG: Updated group $roomId participants');
             }
 
-            // ط¥ط¶ط§ظپط© ط±ط³ط§ظ„ط© ظ†ط¸ط§ظ… ظ…ط­ظ„ظٹط© ط¹ظ†ط¯ ظ…ط؛ط§ط¯ط±ط© ط´ط®طµ ط¢ط®ط±
+            // إضافة رسالة نظام محلية عند مغادرة شخص آخر
             final user = await getUserData(targetId);
             final name = user?.displayName ?? 'ط¹ط¶ظˆ';
             await _saveLocalSystemMessage(
               roomId,
-              '$name ط؛ط§ط¯ط± ط§ظ„ظ…ط¬ظ…ظˆط¹ط©',
+              '$name غادر المجموعة',
             );
           }
           await _relay.sendAck(senderId: senderId, messageId: messageId);
@@ -1203,7 +1205,7 @@ class ChatRepository {
               replyToId; // reaction targets a message via replyToId
           final emoji = msgContent;
 
-          // âڑ ï¸ڈ Skip if this is my own reaction (already added locally)
+          // ⚠️ Skip if this is my own reaction (already added locally)
           if (senderId == currentUser.uid) {
             debugPrint(
               'DEBUG: Skipping my own reaction (already applied locally)',
@@ -1786,10 +1788,10 @@ class ChatRepository {
         await _local.saveMessage(currentUser.uid, roomId, message);
 
         String previewText = text;
-        if (msgType == 'image') previewText = 'ًں“· طµظˆط±ط©';
-        if (msgType == 'audio') previewText = 'ًںژ¤ ط±ط³ط§ظ„ط© طµظˆطھظٹط©';
+        if (msgType == 'image') previewText = '📷 صورة';
+        if (msgType == 'audio') previewText = '🎤 رسالة صوتية';
         if (msgType == 'file')
-          previewText = 'ًں“پ ظ…ظ„ظپ: ${fileName ?? "ظ…ط³طھظ†ط¯"}';
+          previewText = '📁 ملف: ${fileName ?? "مستند"}';
 
         // Update Conversation List (Unread + Last Message)
         await _updateLocalConversation(
@@ -3170,7 +3172,7 @@ class ChatRepository {
     final groupRoom = ChatRoom(
       id: groupId,
       participants: allParticipants,
-      lastMessage: 'طھظ… ط¥ظ†ط´ط§ط، ط§ظ„ظ…ط¬ظ…ظˆط¹ط©',
+      lastMessage: 'تم إنشاء المجموعة',
       lastMessageTime: DateTime.now(),
       unreadCounts: {myId: 0},
       isGroup: true,
@@ -3669,10 +3671,10 @@ class ChatRepository {
     // 1. Validate format
     final cleanHandle = handle.toLowerCase().trim();
     if (cleanHandle.isEmpty)
-      throw Exception('ط§ظ„ظ…ط¹ط±ظپ ظ„ط§ ظٹظ…ظƒظ† ط£ظ† ظٹظƒظˆظ† ظپط§ط±ط؛ط§ظ‹');
+      throw Exception('المعرف لا يمكن أن يكون فارغاً');
     if (!RegExp(r'^[a-z0-9_]{3,20}$').hasMatch(cleanHandle)) {
       throw Exception(
-        'ط§ظ„ظ…ط¹ط±ظپ ظٹط¬ط¨ ط£ظ† ظٹظƒظˆظ† ط£ط­ط±ظپ ط¥ظ†ط¬ظ„ظٹط²ظٹط© ظˆط£ط±ظ‚ط§ظ… ظˆط¨ط·ظˆظ„ 3-20',
+        'المعرف يجب أن يكون أحرف إنجليزية وأرقام وبطول 3-20',
       );
     }
 
@@ -3688,7 +3690,7 @@ class ChatRepository {
         final handleDoc = await transaction.get(handleRef);
         if (handleDoc.exists && handleDoc.data()?['roomId'] != roomId) {
           throw Exception(
-            'ظ‡ط°ط§ ط§ظ„ظ…ط¹ط±ظپ ظ…ط³طھط®ط¯ظ… ط¨ط§ظ„ظپط¹ظ„ ظ„ظ…ط¬ظ…ظˆط¹ط© ط£ط®ط±ظ‰',
+            'هذا المعرف مستخدم بالفعل لمجموعة أخرى',
           );
         }
 
@@ -3709,7 +3711,7 @@ class ChatRepository {
             });
           } else {
             throw Exception(
-              'ط¨ظٹط§ظ†ط§طھ ط§ظ„ظ…ط¬ظ…ظˆط¹ط© ط؛ظٹط± ظ…ظˆط¬ظˆط¯ط© (Meta-data missing)',
+              'بيانات المجموعة غير موجودة (Meta-data missing)',
             );
           }
         } else {
@@ -3733,7 +3735,7 @@ class ChatRepository {
       debugPrint('Handle Error: $e');
       if (e.toString().contains('permission-denied')) {
         throw Exception(
-          'ظ„ط§ طھظ…ظ„ظƒ طµظ„ط§ط­ظٹط© ظ„طھط¹ط¯ظٹظ„ ط§ظ„ظ…ط¹ط±ظپ (Permission Denied)',
+          'لا تملك صلاحية لتعديل المعرف (Permission Denied)',
         );
       }
       rethrow;
@@ -3852,7 +3854,7 @@ class ChatRepository {
           'SECURITY ALERT: Group $roomId no longer exists. Deleting local.',
         );
         await deleteChat(roomId);
-        throw Exception('ط§ظ„ظ…ط¬ظ…ظˆط¹ط© ظ„ظ… طھط¹ط¯ ظ…ظˆط¬ظˆط¯ط©');
+        throw Exception('المجموعة لم تعد موجودة');
       }
 
       final data = doc.data()!;
@@ -4369,7 +4371,7 @@ class ChatRepository {
   Future<void> joinGroupByHandle(String handle) async {
     final myId = _auth.currentUser?.uid;
     if (myId == null) {
-      throw Exception('ظٹط¬ط¨ طھط³ط¬ظٹظ„ ط§ظ„ط¯ط®ظˆظ„ ط£ظˆظ„ط§ظ‹');
+      throw Exception('يجب تسجيل الدخول أولاً');
     }
 
     debugPrint('DEBUG: Looking up group with handle: @$handle');
@@ -4382,12 +4384,12 @@ class ChatRepository {
           .get();
 
       if (!handleDoc.exists) {
-        throw Exception('ط§ظ„ظ…ط¬ظ…ظˆط¹ط© ط؛ظٹط± ظ…ظˆط¬ظˆط¯ط©');
+        throw Exception('المجموعة غير موجودة');
       }
 
       final groupId = handleDoc.data()?['roomId'] as String?;
       if (groupId == null) {
-        throw Exception('ط¨ظٹط§ظ†ط§طھ ط§ظ„ظ…ط¬ظ…ظˆط¹ط© ط؛ظٹط± طµط­ظٹط­ط©');
+        throw Exception('بيانات المجموعة غير صحيحة');
       }
 
       debugPrint('DEBUG: Found group ID: $groupId');
@@ -4399,7 +4401,7 @@ class ChatRepository {
           .get();
 
       if (!groupDoc.exists) {
-        throw Exception('ط§ظ„ظ…ط¬ظ…ظˆط¹ط© ط؛ظٹط± ظ…ظˆط¬ظˆط¯ط©');
+        throw Exception('المجموعة غير موجودة');
       }
 
       final groupData = groupDoc.data()!;
@@ -4423,7 +4425,7 @@ class ChatRepository {
         // For now, just throw an error
         // In the future, implement join request system
         throw Exception(
-          'ط§ظ„ظ…ط¬ظ…ظˆط¹ط© ط®ط§طµط© - ظٹط¬ط¨ ط¥ط±ط³ط§ظ„ ط·ظ„ط¨ ط§ظ†ط¶ظ…ط§ظ…',
+          'المجموعة خاصة - يجب إرسال طلب انضمام',
         );
       }
 
@@ -4454,7 +4456,7 @@ class ChatRepository {
     await _sendSystemMessage(
       groupId: groupId,
       userId: myId,
-      messageText: 'ط§ظ†ط¶ظ…ظ…طھ ط¥ظ„ظ‰ ط§ظ„ظ…ط¬ظ…ظˆط¹ط©',
+      messageText: 'انضممت إلى المجموعة',
     );
 
     // Broadcast join to existing members
@@ -4667,6 +4669,16 @@ class ChatRepository {
   Future<void> requestHistorySync(String peerId) async {
     final myId = _auth.currentUser?.uid;
     if (myId == null) return;
+
+    // Throttle: one sync request per peer per minute (prevents pull-spam).
+    final lastSent = _lastSyncRequestSent[peerId];
+    if (lastSent != null &&
+        DateTime.now().difference(lastSent) < const Duration(minutes: 1)) {
+      debugPrint('P2P Sync: Request to $peerId throttled (sent < 1 min ago)');
+      return;
+    }
+    _lastSyncRequestSent[peerId] = DateTime.now();
+
     _syncStatusController.add(SyncStatus.requesting);
 
     try {
@@ -4716,15 +4728,53 @@ class ChatRepository {
     try {
       debugPrint('P2P Sync: Processing request from ${request.requesterId}');
 
+      // SECURITY: Rate-limit repeated sync requests from the same requester
+      // (max 1 per minute) to prevent history-harvesting abuse.
+      final lastHandled = _lastSyncRequestHandled[request.requesterId];
+      if (lastHandled != null &&
+          DateTime.now().difference(lastHandled) < const Duration(minutes: 1)) {
+        debugPrint('P2P Sync: Ignoring repeated request from ${request.requesterId}');
+        await _firestore
+            .collection('users')
+            .doc(myId)
+            .collection('sync_requests')
+            .doc(docId)
+            .delete();
+        return;
+      }
+
       // 1. Get Conversation ID
       final roomId = _getRoomId(myId, request.requesterId);
+
+      // SECURITY: Only respond if a real local conversation exists with the
+      // requester. Strangers can create sync_requests (Firestore rules allow
+      // any signed-in user), and must not receive even an empty bundle.
+      final localRoom = _local.getConversation(myId, roomId);
+      if (localRoom == null) {
+        debugPrint(
+          'P2P Sync: No local conversation with ${request.requesterId}. Ignoring request.',
+        );
+        await _firestore
+            .collection('users')
+            .doc(myId)
+            .collection('sync_requests')
+            .doc(docId)
+            .delete();
+        return;
+      }
+
+      _lastSyncRequestHandled[request.requesterId] = DateTime.now();
 
       // 2. Get local messages
       final messages = await _local.getMessages(myId, roomId);
 
       final validMessages = messages.where((m) {
         // Don't sync deleted-for-everyone messages
-        return m['isDeletedEverywhere'] != true;
+        if (m['isDeletedEverywhere'] == true) return false;
+        // Don't sync messages I deleted locally (tombstones) —
+        // the requester must not receive what its owner erased.
+        if (m['isDeleted'] == true) return false;
+        return true;
       }).toList();
 
       if (validMessages.isEmpty) {
@@ -4749,6 +4799,9 @@ class ChatRepository {
           } else if (type == 'audio' || type == 'voice') {
             // CRITICAL FIX: Handle audio messages
             decryptedContent = msg['audioUrl']?.toString();
+          } else if (type == 'file') {
+            // FIX: files were never synced because 'fileUrl' was never read
+            decryptedContent = msg['fileUrl']?.toString();
           } else {
             // Unknown type - try text as fallback
             decryptedContent = msg['text']?.toString();
@@ -4784,10 +4837,10 @@ class ChatRepository {
 
             final length = await file.length();
 
-            // IMPROVED: Better size limits - increased to 700KB for better compatibility
-            // Base64 encoding adds ~33% overhead, encryption adds more
-            // So 700KB raw file â‰ˆ 930KB Base64 â‰ˆ 1MB+ encrypted (still within Firestore segmentation limits)
-            const maxFileSize = 700 * 1024; // 700KB raw file
+            // FIX: raised from 700KB to 5MB — voice recordings at the default
+            // bitrate easily exceed 700KB and were silently skipped before.
+            // Large messages are handled by the segmentation phase below.
+            const maxFileSize = 5 * 1024 * 1024; // 5MB raw file
 
             if (length == 0) {
               debugPrint(
@@ -4810,7 +4863,7 @@ class ChatRepository {
               decryptedContent =
                   base64String; // Replace path with actual content
               debugPrint(
-                'DEBUG: âœ“ Converted $type file to Base64: ${(length / 1024).toStringAsFixed(1)} KB -> ${(base64String.length / 1024).toStringAsFixed(1)} KB chars (msgId=${msg['id']})',
+                'DEBUG: ✓ Converted $type file to Base64: ${(length / 1024).toStringAsFixed(1)} KB -> ${(base64String.length / 1024).toStringAsFixed(1)} KB chars (msgId=${msg['id']})',
               );
             } catch (e) {
               debugPrint(
@@ -4843,6 +4896,22 @@ class ChatRepository {
 
         // 2. CRITICAL FIX: Add encrypted payload (required for decryption on restore)
         syncMsg['payload'] = jsonEncode(encrypted);
+
+        // 2b. SECURITY: Sign the encrypted payload so the receiver can verify
+        // the sync data truly comes from the claimed peer (not a Firestore intruder).
+        final myPrivKey = await CryptoService().getPrivateKeyPem();
+        if (myPrivKey != null) {
+          final sig = _signPayload(syncMsg['payload'] as String, myPrivKey);
+          if (sig != null) syncMsg['syncSignature'] = sig;
+        }
+
+        // 2c. Preserve file metadata so files keep their name/extension after sync
+        if (msg['fileName'] != null) {
+          syncMsg['fileName'] = msg['fileName']?.toString();
+        }
+        if (msg['audioDuration'] != null) {
+          syncMsg['audioDuration'] = msg['audioDuration'];
+        }
 
         // 3. Add other important fields for proper message reconstruction
         if (msg['timestamp'] != null) {
@@ -5087,6 +5156,13 @@ class ChatRepository {
             final String chunkData = item['data'];
 
             if (!_pendingSegments.containsKey(originalId)) {
+              // Prune stale partial messages (older than 10 min) to avoid leaks
+              final cutoff = DateTime.now()
+                  .subtract(const Duration(minutes: 10))
+                  .millisecondsSinceEpoch;
+              _pendingSegments.removeWhere(
+                (_, v) => (v['timestamp'] as int? ?? 0) < cutoff,
+              );
               _pendingSegments[originalId] = {
                 'parts': <int, String>{}, // Map index -> data
                 'total': totalParts,
@@ -5156,6 +5232,11 @@ class ChatRepository {
       // IMPROVED: Process messages with better error handling and batch saving
       final List<Map<String, dynamic>> messagesToSave = [];
 
+      // Fetch the sender's public key ONCE per bundle for signature checks.
+      final syncSenderKey = senderId != null
+          ? await _keyRepo.getUserPublicKey(senderId.toString())
+          : null;
+
       for (final syncMsg in finalMessagesToProcess) {
         // Validate message ID is present
         if (syncMsg['id'] == null || syncMsg['senderId'] == null) {
@@ -5163,6 +5244,41 @@ class ChatRepository {
             'DEBUG: Skipping sync message with missing id or senderId',
           );
           continue;
+        }
+
+        // TOMBSTONE GUARD (all types): never resurrect a message I deleted locally.
+        // Previously only media was protected, so deleted texts came back after sync.
+        try {
+          final existingMsg = await _local.getMessageRaw(
+            myId,
+            roomId,
+            syncMsg['id'].toString(),
+          );
+          if (existingMsg != null && existingMsg['isDeleted'] == true) {
+            debugPrint(
+              'DEBUG: Skipping sync for locally deleted message ${syncMsg['id']}',
+            );
+            continue;
+          }
+        } catch (_) {
+          // If the check fails, continue processing (fail-open for availability)
+        }
+
+        // SECURITY: Verify the sync signature when present.
+        // Older peers don't sign — accepted transitionaly for compatibility.
+        final syncSig = syncMsg['syncSignature'] as String?;
+        if (syncSig != null && syncSenderKey != null) {
+          final isValid = CryptoService().verifyString(
+            syncMsg['payload'].toString(),
+            syncSig,
+            syncSenderKey,
+          );
+          if (!isValid) {
+            debugPrint(
+              'SECURITY ALERT: Invalid sync signature for message ${syncMsg['id']} from $senderId. Skipping.',
+            );
+            continue;
+          }
         }
 
         // Decrypt the payload
@@ -5240,7 +5356,7 @@ class ChatRepository {
                 if (await localFile.exists()) {
                   final fileSize = await localFile.length();
                   debugPrint(
-                    'DEBUG: âœ“ Restored ${syncMsg['type']} file to ${localFile.path} (${(fileSize / 1024).toStringAsFixed(1)} KB)',
+                    'DEBUG: ✓ Restored ${syncMsg['type']} file to ${localFile.path} (${(fileSize / 1024).toStringAsFixed(1)} KB)',
                   );
 
                   // Update the message with the NEW local path (use absolute path)
@@ -5253,7 +5369,7 @@ class ChatRepository {
                   }
                 } else {
                   debugPrint(
-                    'DEBUG: âœ— Failed to restore ${syncMsg['type']} - file not created',
+                    'DEBUG: ✗ Failed to restore ${syncMsg['type']} - file not created',
                   );
                   // Fallback: try to use Base64 directly
                   if (syncMsg['type'] == 'image') {
@@ -5265,7 +5381,7 @@ class ChatRepository {
                   }
                 }
               } catch (e) {
-                debugPrint('DEBUG: âœ— Error decoding Base64 media: $e');
+                debugPrint('DEBUG: ✗ Error decoding Base64 media: $e');
                 // Fallback: keep original string (might be broken)
                 if (syncMsg['type'] == 'image') {
                   syncMsg['imageUrl'] = decryptedContent;
@@ -5302,7 +5418,7 @@ class ChatRepository {
           // DEBUG: Log imageUrl for images to verify it's set correctly
           if (syncMsg['type'] == 'image' && syncMsg['imageUrl'] != null) {
             debugPrint(
-              'DEBUG: âœ“ Message ${syncMsg['id']} - imageUrl set to: ${syncMsg['imageUrl']}',
+              'DEBUG: ✓ Message ${syncMsg['id']} - imageUrl set to: ${syncMsg['imageUrl']}',
             );
             // Verify file exists
             try {
@@ -5310,15 +5426,15 @@ class ChatRepository {
               if (await imgFile.exists()) {
                 final size = await imgFile.length();
                 debugPrint(
-                  'DEBUG: âœ“ Image file exists: ${(size / 1024).toStringAsFixed(1)} KB',
+                  'DEBUG: ✓ Image file exists: ${(size / 1024).toStringAsFixed(1)} KB',
                 );
               } else {
                 debugPrint(
-                  'DEBUG: âœ— Image file does NOT exist at path: ${syncMsg['imageUrl']}',
+                  'DEBUG: ✗ Image file does NOT exist at path: ${syncMsg['imageUrl']}',
                 );
               }
             } catch (e) {
-              debugPrint('DEBUG: âœ— Error checking image file: $e');
+              debugPrint('DEBUG: ✗ Error checking image file: $e');
             }
           }
 
@@ -5381,9 +5497,9 @@ class ChatRepository {
         // Get the last message (newest) for preview (messages are already sorted)
         final lastMsg = finalMessagesToProcess.last;
         final preview = (lastMsg['type'] == 'image')
-            ? 'ًں“· طµظˆط±ط©'
+            ? '📷 صورة'
             : (lastMsg['type'] == 'audio' || lastMsg['type'] == 'voice')
-            ? 'ًںژ¤ ط±ط³ط§ظ„ط© طµظˆطھظٹط©'
+            ? '🎤 رسالة صوتية'
             : (lastMsg['text'] ?? '');
         final ts = DateTime.fromMillisecondsSinceEpoch(
           lastMsg['timestamp'] ?? DateTime.now().millisecondsSinceEpoch,
