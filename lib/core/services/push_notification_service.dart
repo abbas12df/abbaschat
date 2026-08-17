@@ -60,7 +60,6 @@ class PushNotificationService {
   }
 
 
-
   Future<void> init() async {
     if (_client != null) return;
     try {
