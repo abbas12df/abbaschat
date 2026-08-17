@@ -7,7 +7,10 @@ import 'dart:math';
 import 'dart:typed_data';
 
 class CryptoService {
-  final FlutterSecureStorage _storage = const FlutterSecureStorage();
+  final FlutterSecureStorage _storage = const FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    wOptions: WindowsOptions(),
+  );
   static const String _privateKeyKey = 'device_private_key';
   static const String _publicKeyKey = 'device_public_key';
   static const String _archivedKeysKey =

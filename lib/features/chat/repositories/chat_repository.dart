@@ -178,6 +178,7 @@ class ChatRepository {
         // Only start listening after box is ready
         _initializeInboxListener();
         _initializeSyncListeners(); // Added for P2P Sync
+        restoreActiveChats();
       });
       setupPresence();
     }
@@ -335,7 +336,7 @@ class ChatRepository {
     if (uid == null) return;
 
     // Ensure connection is established when we have a user
-    if (!kIsWeb && defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS) return;
+
     FirebaseDatabase.instance.goOnline();
 
     final database = FirebaseDatabase.instance;
@@ -373,7 +374,7 @@ class ChatRepository {
   }
 
   Stream<Map<String, dynamic>> getUserPresence(String uid) {
-    if (!kIsWeb && defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS) {
+{
       return const Stream.empty();
     }
     return FirebaseDatabase.instance.ref('status/$uid').onValue.map((event) {
@@ -3024,7 +3025,7 @@ class ChatRepository {
     }
 
     try {
-      if (!kIsWeb && defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS) return;
+
       final ref = FirebaseDatabase.instance.ref('typing/$roomId/$uid');
       if (isTyping) {
         // Set to true, auto-remove on disconnect to prevent stuck "typing"
@@ -3041,7 +3042,7 @@ class ChatRepository {
   }
 
   Stream<List<String>> getTypingUsers(String roomId) {
-    if (!kIsWeb && defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS) {
+{
       return const Stream.empty();
     }
     return FirebaseDatabase.instance.ref('typing/$roomId').onValue.map((event) {

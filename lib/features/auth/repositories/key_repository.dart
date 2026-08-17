@@ -21,7 +21,7 @@ class KeyRepository {
 
     final pem = await CryptoService().getPublicKeyPem();
     if (pem != null) {
-      if (!kIsWeb && defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS) return;
+
       try {
         await _rtdb.ref('users_public_keys/$uid').set(pem);
       } catch (e) {
@@ -32,7 +32,7 @@ class KeyRepository {
 
   /// Fetches the Public Key for a given User ID
   Future<String?> getUserPublicKey(String userId) async {
-    if (!kIsWeb && defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS) return null;
+
     try {
       final snapshot = await _rtdb.ref('users_public_keys/$userId').get();
       if (snapshot.exists && snapshot.value is String) {

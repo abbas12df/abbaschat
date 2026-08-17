@@ -7,7 +7,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 final secureStorageServiceProvider = Provider((ref) => SecureStorageService());
 
 class SecureStorageService {
-  final _storage = const FlutterSecureStorage();
+  final _storage = const FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    wOptions: WindowsOptions(),
+  );
   static const _hiveKeyAlias = 'hive_encryption_key_v1';
 
   /// Returns the 32-byte AES key for Hive encryption.

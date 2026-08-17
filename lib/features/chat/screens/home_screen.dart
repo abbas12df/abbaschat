@@ -45,9 +45,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(chatRepositoryProvider).restoreActiveChats();
-    });
   }
 
   @override
