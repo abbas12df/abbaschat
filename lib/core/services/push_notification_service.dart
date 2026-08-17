@@ -15,6 +15,50 @@ class PushNotificationService {
   AutoRefreshingAuthClient? _client;
   final List<String> _scopes = ['https://www.googleapis.com/auth/firebase.messaging'];
 
+  // --- FREE SECURE RELAY (Vercel) ---
+  // Fill these after deploying vercel-relay/ (see vercel-relay/README.md).
+  // While _relayUrl is empty, this path is skipped silently.
+  static const String _relayUrl = ''; // e.g. 'https://your-app.vercel.app/api/send-push'
+  static const String _relayKey = ''; // same value as RELAY_SECRET on Vercel
+
+  /// SECURE PATH (free): send through the Vercel relay.
+  /// The service account lives only in Vercel env vars — nothing secret here.
+  Future<bool> _sendViaRelay({
+    required String targetToken,
+    required String title,
+    required String body,
+    required Map<String, dynamic> data,
+  }) async {
+    if (_relayUrl.isEmpty) return false; // Relay not configured yet.
+    try {
+      final stringData = data.map((k, v) => MapEntry(k, v?.toString() ?? ''));
+      final response = await http
+          .post(
+            Uri.parse(_relayUrl),
+            headers: {
+              'Content-Type': 'application/json',
+              'x-relay-key': _relayKey,
+            },
+            body: jsonEncode({
+              'targetToken': targetToken,
+              'title': title,
+              'body': body,
+              'data': stringData,
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200) {
+        debugPrint('Push notification sent via Vercel relay.');
+        return true;
+      }
+      debugPrint('Relay responded ${response.statusCode}: ${response.body}');
+      return false;
+    } catch (e) {
+      debugPrint('Relay push failed (falling back): $e');
+      return false;
+    }
+  }
+
   /// SECURE PATH: server-side Cloud Function.
   /// The service account lives only on Google's servers — nothing secret in the app.
   Future<bool> _sendViaCloudFunction({
@@ -60,7 +104,16 @@ class PushNotificationService {
     required String body,
     required Map<String, dynamic> data,
   }) async {
-    // 1. Preferred secure path: Cloud Function (service account is server-side).
+    // 1. Preferred secure path: free Vercel relay (service account is server-side).
+    final sentViaRelay = await _sendViaRelay(
+      targetToken: targetToken,
+      title: title,
+      body: body,
+      data: data,
+    );
+    if (sentViaRelay) return;
+
+    // 2. Alternative secure path: Cloud Function (requires Blaze plan).
     final sentSecurely = await _sendViaCloudFunction(
       targetToken: targetToken,
       title: title,
@@ -69,8 +122,8 @@ class PushNotificationService {
     );
     if (sentSecurely) return;
 
-    // 2. LEGACY FALLBACK (transitional): direct FCM with embedded credentials.
-    //    Remove SecureServiceAccount + this path once the function is deployed.
+    // 3. LEGACY FALLBACK (transitional): direct FCM with embedded credentials.
+    //    Remove SecureServiceAccount + this path once the relay is deployed.
     if (_client == null) {
       await init();
     }
