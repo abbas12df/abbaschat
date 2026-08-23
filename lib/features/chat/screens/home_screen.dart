@@ -61,7 +61,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Nisaba'),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.asset(
+              'assets/images/app_logo_transparent.png',
+              width: 28,
+              height: 28,
+              errorBuilder: (_, __, ___) => Icon(
+                Icons.shield_rounded,
+                color: Theme.of(context).colorScheme.primary,
+                size: 28,
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Text('Nisaba'),
+          ],
+        ),
         leading: Padding(
           padding: const EdgeInsets.all(8),
           child: InkWell(
@@ -79,19 +95,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.search),
-            tooltip: 'Find Users',
+            tooltip: 'البحث عن مستخدمين',
             onPressed: () => _push(const SearchUserScreen()),
           ),
           if (isLargeScreen)
             IconButton(
               icon: const Icon(Icons.settings_outlined),
-              tooltip: 'Settings',
+              tooltip: 'الإعدادات',
               onPressed: () => _push(const SettingsScreen()),
             ),
           if (isLargeScreen)
             IconButton(
               icon: const Icon(Icons.add_circle_outline),
-              tooltip: 'Create',
+              tooltip: 'إنشاء جديد',
               onPressed: () => _showCreateMenu(preferDialog: true),
             ),
         ],
@@ -163,7 +179,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       alpha: 0.5,
                     ),
                     child: Text(
-                      'Remote: Up/Down to browse channels, OK to open.',
+                      'استخدم الأسهم للتنقل واضغط موافق للفتح.',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
@@ -236,13 +252,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       builder: (context, snapshot) {
         final user = snapshot.data;
         final channelName = selectedChat.isGroup
-            ? (selectedChat.groupName ?? 'Group')
-            : (user?.displayName ?? 'Contact');
+            ? (selectedChat.groupName ?? 'مجموعة')
+            : (user?.displayName ?? 'جهة اتصال');
         final channelSubtitle = selectedChat.isGroup
-            ? 'Group Channel'
-            : (user?.username != null
-                  ? '@${user!.username}'
-                  : 'Direct Channel');
+            ? 'قناة مجموعة'
+            : (user?.username != null ? '@${user!.username}' : 'محادثة مباشرة');
         final unreadCount =
             selectedChat.unreadCounts[FirebaseAuth.instance.currentUser?.uid] ??
             0;
@@ -290,7 +304,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
                 const SizedBox(height: 20),
                 Text(
-                  'Latest message',
+                  'آخر رسالة',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -322,7 +336,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
                 const SizedBox(height: 28),
                 Text(
-                  'Quick Actions',
+                  'إجراءات سريعة',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -334,37 +348,37 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   children: [
                     _buildQuickActionChip(
                       icon: Icons.open_in_new_rounded,
-                      label: 'Open Channel',
+                      label: 'فتح المحادثة',
                       onTap: () => _openChat(selectedChat),
                     ),
                     _buildQuickActionChip(
                       icon: Icons.person_search_rounded,
-                      label: 'Find User',
+                      label: 'البحث عن مستخدم',
                       onTap: () => _push(const SearchUserScreen()),
                     ),
                     _buildQuickActionChip(
                       icon: Icons.group_add_rounded,
-                      label: 'New Group',
+                      label: 'مجموعة جديدة',
                       onTap: () => _push(const CreateGroupScreen()),
                     ),
                     _buildQuickActionChip(
                       icon: Icons.smart_toy_rounded,
-                      label: 'AI Chat',
+                      label: 'مساعد ذكي',
                       onTap: () => _push(const AiChatScreen()),
                     ),
                     _buildQuickActionChip(
                       icon: Icons.auto_awesome_rounded,
-                      label: 'Qwen Chat',
+                      label: 'محادثة Qwen',
                       onTap: () => _push(const QwenChatScreen()),
                     ),
                     _buildQuickActionChip(
                       icon: Icons.image_outlined,
-                      label: 'Image Gen',
+                      label: 'توليد صورة',
                       onTap: () => _push(const ImageGeneratorScreen()),
                     ),
                     _buildQuickActionChip(
                       icon: Icons.settings_outlined,
-                      label: 'Settings',
+                      label: 'الإعدادات',
                       onTap: () => _push(const SettingsScreen()),
                     ),
                   ],
@@ -490,7 +504,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             onChanged: _onMobileSearchChanged,
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
-              hintText: 'Search channels, category, or source',
+              hintText: 'ابحث في المحادثات أو التصنيفات',
               prefixIcon: const Icon(Icons.search_rounded),
               suffixIcon: _mobileSearchQuery.isEmpty
                   ? null
@@ -519,7 +533,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 final selected = _selectedMobileCategory == category;
                 return ChoiceChip(
                   label: Text(
-                    category == _mobileAllCategory ? 'All' : category,
+                    _mobileCategoryLabel(category),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -535,7 +549,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           Align(
             alignment: Alignment.centerLeft,
             child: Text(
-              '$visibleCount channels',
+              '$visibleCount محادثات',
               style: theme.textTheme.bodySmall,
             ),
           ),
@@ -558,15 +572,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              'No channels match your filters',
+              'لا توجد محادثات تطابق البحث',
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 8),
             Text(
-              'Try clearing search text or selecting another category.',
+              'جرّب مسح البحث أو اختيار تصنيف آخر.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium,
             ),
@@ -585,7 +599,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         children: [
           Expanded(
             child: Text(
-              title,
+              _mobileCategoryLabel(title),
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
@@ -606,10 +620,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   List<String> _extractAvailableMobileCategories(List<ChatRoom> chats) {
-    final categories = chats
-        .map(_mobileCategoryForChat)
-        .toSet()
-        .toList()
+    final categories = chats.map(_mobileCategoryForChat).toSet().toList()
       ..sort(_sortMobileCategories);
     return categories;
   }
@@ -646,6 +657,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return _normalizedMetaValue(chat.category) ??
         _normalizedMetaValue(chat.source) ??
         _mobileUncategorized;
+  }
+
+  String _mobileCategoryLabel(String category) {
+    if (category == _mobileAllCategory) return 'الكل';
+    if (category == _mobileDirectCategory) return 'محادثات مباشرة';
+    if (category == _mobileUncategorized) return 'غير مصنفة';
+    return category;
   }
 
   String _mobileSearchableText(ChatRoom chat) {
@@ -690,7 +708,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final unreadCount = chat.unreadCounts[currentUserId] ?? 0;
 
     if (chat.isGroup) {
-      final groupName = chat.groupName ?? 'Group';
+      final groupName = chat.groupName ?? 'مجموعة';
       final groupIcon = chat.groupIcon;
 
       return _buildTileShell(
@@ -716,7 +734,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       future: ref.read(chatRepositoryProvider).getUserData(otherUserId),
       builder: (context, snapshot) {
         final user = snapshot.data;
-        final displayName = user?.displayName ?? 'User';
+        final displayName = user?.displayName ?? 'مستخدم';
 
         return StreamBuilder<Map<String, dynamic>>(
           stream: ref
@@ -725,6 +743,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           builder: (context, presenceSnapshot) {
             final isOnline = presenceSnapshot.data?['state'] == 'online';
 
+            final theme = Theme.of(context);
             return _buildTileShell(
               chat: chat,
               index: index,
@@ -736,8 +755,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               avatar: AvatarWithPresence(
                 imageUrl: user?.photoURL,
                 fallbackText: displayName,
-                backgroundColor:
-                    Colors.primaries[index % Colors.primaries.length].shade100,
+                backgroundColor: index.isEven
+                    ? theme.colorScheme.primaryContainer
+                    : theme.colorScheme.secondaryContainer,
                 isOnline: isOnline,
                 radius: isLargeScreen ? 30 : 28,
               ),
@@ -850,7 +870,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ref.read(chatRepositoryProvider).deleteChat(chat.id);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(chat.isGroup ? 'Group removed' : 'Chat removed'),
+            content: Text(
+              chat.isGroup ? 'تمت إزالة المجموعة' : 'تمت إزالة المحادثة',
+            ),
           ),
         );
       },
@@ -877,14 +899,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Leave Group?'),
+          title: const Text('مغادرة المجموعة؟'),
           content: const Text(
-            'This will remove your local copy and leave the group if you are still a member.',
+            'سيؤدي ذلك إلى إزالة النسخة المحلية ومغادرة المجموعة إذا كنت لا تزال عضوًا فيها.',
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancel'),
+              child: const Text('إلغاء'),
             ),
             TextButton(
               onPressed: () async {
@@ -894,7 +916,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               style: TextButton.styleFrom(
                 foregroundColor: Theme.of(context).colorScheme.error,
               ),
-              child: const Text('Leave & Delete'),
+              child: const Text('مغادرة وحذف'),
             ),
           ],
         ),
@@ -920,12 +942,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
             const SizedBox(height: 16),
             const Text(
-              'Delete Conversation',
+              'حذف المحادثة',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             const Text(
-              'You can delete only for yourself, or for both sides.',
+              'يمكنك حذف المحادثة من جهازك فقط أو حذفها من الطرفين.',
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
@@ -934,7 +956,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 Expanded(
                   child: OutlinedButton(
                     onPressed: () => Navigator.of(ctx).pop('me'),
-                    child: const Text('Delete for me'),
+                    child: const Text('حذف من جهازي'),
                   ),
                 ),
               ],
@@ -948,13 +970,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   backgroundColor: Theme.of(context).colorScheme.error,
                   foregroundColor: Theme.of(context).colorScheme.onError,
                 ),
-                child: const Text('Delete for everyone'),
+                child: const Text('حذف من الطرفين'),
               ),
             ),
             const SizedBox(height: 12),
             TextButton(
               onPressed: () => Navigator.of(ctx).pop('cancel'),
-              child: const Text('Cancel'),
+              child: const Text('إلغاء'),
             ),
           ],
         ),
@@ -985,76 +1007,93 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           .deleteConversationForEveryone(roomId);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Conversation deleted for everyone.')),
+          const SnackBar(content: Text('تم حذف المحادثة من الطرفين')),
         );
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Delete for everyone failed: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('تعذر الحذف من الطرفين: $e')));
       }
     }
   }
 
   Widget _buildEmptyState() {
+    final theme = Theme.of(context);
+
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 720),
+        constraints: const BoxConstraints(maxWidth: 560),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.primaryContainer.withValues(alpha: 0.35),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.chat_bubble_outline_rounded,
-                      size: 64,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  )
-                  .animate()
-                  .fadeIn(duration: 500.ms)
-                  .scale(delay: 120.ms, curve: Curves.easeOutBack),
-              const SizedBox(height: 24),
-              Text(
-                'No channels yet',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ).animate().fadeIn(delay: 220.ms),
-              const SizedBox(height: 8),
-              Text(
-                'Start a conversation or create a group to begin.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium,
-              ).animate().fadeIn(delay: 320.ms),
-              const SizedBox(height: 28),
-              Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                alignment: WrapAlignment.center,
+          padding: const EdgeInsets.all(24),
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(28),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  ElevatedButton.icon(
-                    onPressed: () => _push(const SearchUserScreen()),
-                    icon: const Icon(Icons.person_add_outlined),
-                    label: const Text('Find User'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () => _push(const CreateGroupScreen()),
-                    icon: const Icon(Icons.group_add_outlined),
-                    label: const Text('New Group'),
-                  ),
+                  Container(
+                        padding: const EdgeInsets.all(22),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              theme.colorScheme.primaryContainer,
+                              theme.colorScheme.secondaryContainer,
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.forum_outlined,
+                          size: 54,
+                          color: theme.colorScheme.primary,
+                        ),
+                      )
+                      .animate()
+                      .fadeIn(duration: 500.ms)
+                      .scale(delay: 120.ms, curve: Curves.easeOutBack),
+                  const SizedBox(height: 24),
+                  Text(
+                    'لا توجد محادثات بعد',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ).animate().fadeIn(delay: 220.ms),
+                  const SizedBox(height: 8),
+                  Text(
+                    'ابدأ محادثة آمنة أو أنشئ مجموعة للبدء.',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ).animate().fadeIn(delay: 320.ms),
+                  const SizedBox(height: 28),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () => _push(const SearchUserScreen()),
+                          icon: const Icon(Icons.person_add_outlined),
+                          label: const Text('محادثة جديدة'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => _push(const CreateGroupScreen()),
+                          icon: const Icon(Icons.group_add_outlined),
+                          label: const Text('مجموعة جديدة'),
+                        ),
+                      ),
+                    ],
+                  ).animate().fadeIn(delay: 420.ms).slideY(begin: 0.2),
                 ],
-              ).animate().fadeIn(delay: 420.ms).slideY(begin: 0.2),
-            ],
+              ),
+            ),
           ),
         ),
       ),
@@ -1065,32 +1104,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final actions = [
       _ActionEntry(
         icon: Icons.person_add_outlined,
-        title: 'Direct Chat',
-        subtitle: 'Find a user and start a conversation',
+        title: 'محادثة مباشرة',
+        subtitle: 'ابحث عن مستخدم وابدأ محادثة آمنة',
         onTap: () => _push(const SearchUserScreen()),
       ),
       _ActionEntry(
         icon: Icons.group_add_outlined,
-        title: 'Create Group',
-        subtitle: 'Create a new group channel',
+        title: 'إنشاء مجموعة',
+        subtitle: 'أنشئ مجموعة جديدة للتواصل',
         onTap: () => _push(const CreateGroupScreen()),
       ),
       _ActionEntry(
         icon: Icons.smart_toy_rounded,
-        title: 'AI Chat',
-        subtitle: 'Open the AI assistant chat',
+        title: 'مساعد الذكاء الاصطناعي',
+        subtitle: 'افتح محادثة المساعد الذكي',
         onTap: () => _push(const AiChatScreen()),
       ),
       _ActionEntry(
         icon: Icons.auto_awesome,
-        title: 'Qwen Chat',
-        subtitle: 'Text and vision model',
+        title: 'محادثة Qwen',
+        subtitle: 'محادثة نصية وبصرية',
         onTap: () => _push(const QwenChatScreen()),
       ),
       _ActionEntry(
         icon: Icons.image_outlined,
-        title: 'Image Generator',
-        subtitle: 'Generate images with AI',
+        title: 'مولد الصور',
+        subtitle: 'أنشئ صورًا باستخدام الذكاء الاصطناعي',
         onTap: () => _push(const ImageGeneratorScreen()),
       ),
     ];
@@ -1100,7 +1139,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         context: context,
         builder: (ctx) {
           return AlertDialog(
-            title: const Text('Create'),
+            title: const Text('إنشاء جديد'),
             content: SizedBox(
               width: 520,
               child: ListView.separated(
@@ -1166,7 +1205,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (!mounted) return;
 
     if (chat.isGroup) {
-      final groupName = chat.groupName ?? 'Group';
+      final groupName = chat.groupName ?? 'مجموعة';
       await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => ChatScreen(
@@ -1183,7 +1222,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final user = await ref
         .read(chatRepositoryProvider)
         .getUserData(otherUserId);
-    final displayName = user?.displayName ?? 'User';
+    final displayName = user?.displayName ?? 'مستخدم';
 
     if (!mounted) return;
 
@@ -1232,7 +1271,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final currentUserId = FirebaseAuth.instance.currentUser?.uid;
     return chat.participants.firstWhere(
       (id) => id != currentUserId,
-      orElse: () => 'Unknown',
+      orElse: () => 'غير معروف',
     );
   }
 
@@ -1306,40 +1345,65 @@ class _AutoRetryErrorWidgetState extends State<_AutoRetryErrorWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.cloud_off_outlined, size: 72)
-              .animate(onPlay: (controller) => controller.repeat(reverse: true))
-              .fadeIn(duration: 700.ms)
-              .fadeOut(duration: 700.ms),
-          const SizedBox(height: 16),
-          const Text(
-            'Loading channels...',
-            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 8),
-          Text('Retrying in $_countdown sec'),
-          const SizedBox(height: 14),
-          SizedBox(
-            width: 40,
-            height: 40,
-            child: CircularProgressIndicator(
-              value: _countdown / 3,
-              strokeWidth: 3,
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                      Icons.cloud_off_outlined,
+                      size: 58,
+                      color: theme.colorScheme.primary,
+                    )
+                    .animate(
+                      onPlay: (controller) => controller.repeat(reverse: true),
+                    )
+                    .fadeIn(duration: 700.ms)
+                    .fadeOut(duration: 700.ms),
+                const SizedBox(height: 16),
+                Text(
+                  'تعذر تحميل المحادثات',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'سنعيد المحاولة تلقائيًا خلال $_countdown ثوانٍ.',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: 40,
+                  height: 40,
+                  child: CircularProgressIndicator(
+                    value: _countdown / 3,
+                    strokeWidth: 3,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                TextButton.icon(
+                  onPressed: () {
+                    _timer?.cancel();
+                    widget.onRetry();
+                  },
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('إعادة المحاولة الآن'),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 18),
-          TextButton.icon(
-            onPressed: () {
-              _timer?.cancel();
-              widget.onRetry();
-            },
-            icon: const Icon(Icons.refresh),
-            label: const Text('Retry now'),
-          ),
-        ],
+        ),
       ),
     );
   }

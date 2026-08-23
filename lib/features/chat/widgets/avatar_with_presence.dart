@@ -22,7 +22,8 @@ class AvatarWithPresence extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Stack(
       children: [
@@ -30,14 +31,16 @@ class AvatarWithPresence extends StatelessWidget {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             border: Border.all(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.1)
-                  : Colors.black.withValues(alpha: 0.05),
+              color: theme.colorScheme.outlineVariant.withValues(
+                alpha: isDark ? 0.8 : 0.9,
+              ),
               width: 2,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.1),
+                color: theme.colorScheme.shadow.withValues(
+                  alpha: isDark ? 0.35 : 0.12,
+                ),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
@@ -48,10 +51,12 @@ class AvatarWithPresence extends StatelessWidget {
             backgroundColor:
                 backgroundColor ??
                 (isGroup
-                    ? Colors.purple.shade100
-                    : Theme.of(context).colorScheme.primaryContainer),
+                    ? theme.colorScheme.secondaryContainer
+                    : theme.colorScheme.primaryContainer),
             backgroundImage: _getBackgroundImage(),
-            child: _getBackgroundImage() == null ? _buildFallback() : null,
+            child: _getBackgroundImage() == null
+                ? _buildFallback(context)
+                : null,
           ),
         ),
         if (isOnline && !isGroup)
@@ -63,7 +68,7 @@ class AvatarWithPresence extends StatelessWidget {
                       width: 12,
                       height: 12,
                       decoration: BoxDecoration(
-                        color: Colors.green,
+                        color: const Color(0xFF22C55E),
                         shape: BoxShape.circle,
                         border: Border.all(
                           color: Theme.of(context).scaffoldBackgroundColor,
@@ -71,7 +76,9 @@ class AvatarWithPresence extends StatelessWidget {
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.green.withValues(alpha: 0.4),
+                            color: const Color(
+                              0xFF22C55E,
+                            ).withValues(alpha: 0.4),
                             blurRadius: 4,
                             spreadRadius: 1,
                           ),
@@ -104,14 +111,14 @@ class AvatarWithPresence extends StatelessWidget {
     }
   }
 
-  Widget _buildFallback() {
+  Widget _buildFallback(BuildContext context) {
     final firstChar = fallbackText.isNotEmpty ? fallbackText[0] : '?';
     return Text(
       firstChar,
       style: TextStyle(
         fontWeight: FontWeight.w600,
         fontSize: radius * 0.6,
-        color: isGroup ? Colors.purple : null,
+        color: isGroup ? Theme.of(context).colorScheme.primary : null,
       ),
     );
   }

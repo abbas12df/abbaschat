@@ -17,14 +17,16 @@ class ShimmerProfileCard extends StatelessWidget {
                 width: 120,
                 height: 120,
                 decoration: BoxDecoration(
-                  color: Colors.grey.withValues(alpha: 0.15),
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   shape: BoxShape.circle,
                 ),
               )
               .animate(onPlay: (c) => c.repeat())
               .shimmer(
                 duration: 1200.ms,
-                color: Colors.grey.withValues(alpha: 0.2),
+                color: Theme.of(
+                  context,
+                ).colorScheme.outline.withValues(alpha: 0.24),
               ),
           const SizedBox(height: 16),
           // Name skeleton
@@ -32,14 +34,16 @@ class ShimmerProfileCard extends StatelessWidget {
                 height: 24,
                 width: 150,
                 decoration: BoxDecoration(
-                  color: Colors.grey.withValues(alpha: 0.15),
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(4),
                 ),
               )
               .animate(onPlay: (c) => c.repeat())
               .shimmer(
                 duration: 1200.ms,
-                color: Colors.grey.withValues(alpha: 0.2),
+                color: Theme.of(
+                  context,
+                ).colorScheme.outline.withValues(alpha: 0.24),
               ),
           const SizedBox(height: 8),
           // Username skeleton
@@ -47,14 +51,16 @@ class ShimmerProfileCard extends StatelessWidget {
                 height: 16,
                 width: 100,
                 decoration: BoxDecoration(
-                  color: Colors.grey.withValues(alpha: 0.15),
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(4),
                 ),
               )
               .animate(onPlay: (c) => c.repeat())
               .shimmer(
                 duration: 1200.ms,
-                color: Colors.grey.withValues(alpha: 0.2),
+                color: Theme.of(
+                  context,
+                ).colorScheme.outline.withValues(alpha: 0.24),
               ),
           const SizedBox(height: 24),
           // Bio skeleton
@@ -62,14 +68,16 @@ class ShimmerProfileCard extends StatelessWidget {
                 width: double.infinity,
                 height: 80,
                 decoration: BoxDecoration(
-                  color: Colors.grey.withValues(alpha: 0.15),
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(12),
                 ),
               )
               .animate(onPlay: (c) => c.repeat())
               .shimmer(
                 duration: 1200.ms,
-                color: Colors.grey.withValues(alpha: 0.2),
+                color: Theme.of(
+                  context,
+                ).colorScheme.outline.withValues(alpha: 0.24),
               ),
         ],
       ),
@@ -98,7 +106,9 @@ class ShimmerUserList extends StatelessWidget {
                     width: 50,
                     height: 50,
                     decoration: BoxDecoration(
-                      color: Colors.grey.withValues(alpha: 0.15),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
                       shape: BoxShape.circle,
                     ),
                   ),
@@ -112,7 +122,9 @@ class ShimmerUserList extends StatelessWidget {
                           height: 16,
                           width: double.infinity,
                           decoration: BoxDecoration(
-                            color: Colors.grey.withValues(alpha: 0.15),
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainerHighest,
                             borderRadius: BorderRadius.circular(4),
                           ),
                         ),
@@ -121,7 +133,9 @@ class ShimmerUserList extends StatelessWidget {
                           height: 12,
                           width: 120,
                           decoration: BoxDecoration(
-                            color: Colors.grey.withValues(alpha: 0.15),
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainerHighest,
                             borderRadius: BorderRadius.circular(4),
                           ),
                         ),
@@ -134,7 +148,9 @@ class ShimmerUserList extends StatelessWidget {
             .animate(onPlay: (c) => c.repeat())
             .shimmer(
               duration: 1200.ms,
-              color: Colors.grey.withValues(alpha: 0.2),
+              color: Theme.of(
+                context,
+              ).colorScheme.outline.withValues(alpha: 0.24),
             );
       },
     );
@@ -164,10 +180,17 @@ class ShimmerLoadingScreen extends StatelessWidget {
                     ).primaryColor.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(
-                    Icons.chat_bubble_outline,
-                    size: 40,
-                    color: Theme.of(context).primaryColor,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Image.asset(
+                      'assets/images/app_logo_transparent.png',
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => Icon(
+                        Icons.shield_rounded,
+                        size: 40,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
                   ),
                 )
                 .animate(onPlay: (c) => c.repeat())
@@ -178,7 +201,10 @@ class ShimmerLoadingScreen extends StatelessWidget {
             if (message != null)
               Text(
                     message!,
-                    style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                    ),
                   )
                   .animate(onPlay: (c) => c.repeat())
                   .fadeIn(duration: 1000.ms)

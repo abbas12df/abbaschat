@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_options.dart';
@@ -107,8 +108,16 @@ class _MyAppState extends ConsumerState<MyApp> {
       theme: NisabaTheme.lightTheme(),
       darkTheme: NisabaTheme.darkTheme(),
       themeMode: themeMode,
+      themeAnimationDuration: const Duration(milliseconds: 260),
+      themeAnimationCurve: Curves.easeOutCubic,
       home: const AppLockManager(child: AuthWrapper()),
-      // locale: const Locale('ar', 'SA'), // Removed to allow dynamic language switching
+      locale: const Locale('ar'),
+      supportedLocales: const [Locale('ar')],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
     );
   }
 }

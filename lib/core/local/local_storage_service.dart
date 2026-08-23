@@ -301,7 +301,7 @@ class LocalStorageService {
       final boxName = '$messagesBoxPrefix${userId}_$chatId';
       var box = await _openSecureBox(boxName);
       if (!box.isOpen) box = await _openSecureBox(boxName);
-      
+
       if (box.isOpen) {
         final data = box.get(messageId);
         if (data != null) {
@@ -375,14 +375,15 @@ class LocalStorageService {
       // Yield initial data immediately
       try {
         if (box.isOpen) {
-          final initialData = box.values
-              .map((e) => Map<String, dynamic>.from(e))
-              .where((m) => m['isDeleted'] != true)
-              .toList()
-            ..sort(
-              (a, b) =>
-                  (b['timestamp'] as int).compareTo(a['timestamp'] as int),
-            );
+          final initialData =
+              box.values
+                  .map((e) => Map<String, dynamic>.from(e))
+                  .where((m) => m['isDeleted'] != true)
+                  .toList()
+                ..sort(
+                  (a, b) =>
+                      (b['timestamp'] as int).compareTo(a['timestamp'] as int),
+                );
           yield initialData;
         } else {
           yield [];
@@ -530,6 +531,9 @@ class LocalStorageService {
         final data = box.get(messageId);
         if (data != null) {
           final msg = Map<String, dynamic>.from(data);
+          // A local tombstone is authoritative. Late sync packets must not
+          // revive a message that the user deleted on this device.
+          if (msg['isDeleted'] == true) return;
           updates.forEach((key, value) => msg[key] = value);
           await box.put(messageId, msg);
         }
@@ -579,7 +583,8 @@ class LocalStorageService {
           if (val != null) {
             final msg = Map<String, dynamic>.from(val);
             // If message IS from me, and not read, mark read (double check)
-            if (msg['senderId'] == userId && (msg['isRead'] == false || msg['status'] != 'read')) {
+            if (msg['senderId'] == userId &&
+                (msg['isRead'] == false || msg['status'] != 'read')) {
               msg['isRead'] = true;
               msg['status'] = 'read';
               await box.put(key, msg);
@@ -600,10 +605,12 @@ class LocalStorageService {
   ) async {
     final box = Hive.box('conversations_$userId');
 
-    // Merge Strategy: Preserve pendingRequests if not provided in update
+    // A locally deleted conversation must not be recreated by background sync.
+    // An explicit user-created chat can clear this marker first.
     final existingParams = box.get(chatId);
     if (existingParams != null) {
       final existing = Map<String, dynamic>.from(existingParams);
+      if (existing['isDeleted'] == true) return;
       if (data['pendingRequests'] == null &&
           existing['pendingRequests'] != null) {
         data['pendingRequests'] = existing['pendingRequests'];
@@ -611,6 +618,27 @@ class LocalStorageService {
     }
 
     await box.put(chatId, data);
+  }
+
+  Future<bool> isConversationDeleted(String userId, String chatId) async {
+    if (!Hive.isBoxOpen('conversations_$userId')) {
+      await _openSecureBox('conversations_$userId');
+    }
+    final raw = Hive.box('conversations_$userId').get(chatId);
+    return raw is Map && raw['isDeleted'] == true;
+  }
+
+  /// Clears only an intentional local conversation-delete marker. Automatic
+  /// sync/restore code must never call this method.
+  Future<void> clearConversationDeletion(String userId, String chatId) async {
+    if (!Hive.isBoxOpen('conversations_$userId')) {
+      await _openSecureBox('conversations_$userId');
+    }
+    final box = Hive.box('conversations_$userId');
+    final raw = box.get(chatId);
+    if (raw is Map && raw['isDeleted'] == true) {
+      await box.delete(chatId);
+    }
   }
 
   Future<void> deleteConversation(String userId, String chatId) async {
@@ -629,13 +657,15 @@ class LocalStorageService {
     // 1. Delete the conversation entry from conversations box
     final conversationsBox = Hive.box('conversations_$userId');
 
-    // SAFETY: Check if the key exists before deleting
-    if (!conversationsBox.containsKey(chatId)) {
-      print('WARNING: Conversation $chatId not found in box, skipping delete');
-    } else {
-      await conversationsBox.delete(chatId);
-      print('DEBUG: Deleted conversation $chatId from conversations box');
-    }
+    // Keep an encrypted conversation tombstone instead of removing the key.
+    // Without it, a later history sync cannot distinguish intentional local
+    // deletion from a conversation that was never created.
+    await conversationsBox.put(chatId, {
+      'id': chatId,
+      'isDeleted': true,
+      'deletedAt': DateTime.now().millisecondsSinceEpoch,
+    });
+    print('DEBUG: Tombstoned conversation $chatId in conversations box');
 
     // 2. Delete the messages box - must close first if open
     final messagesBoxName = '${messagesBoxPrefix}${userId}_$chatId';
@@ -662,7 +692,7 @@ class LocalStorageService {
     if (!Hive.isBoxOpen('conversations_$userId')) return null;
     final box = Hive.box('conversations_$userId');
     final data = box.get(chatId);
-    if (data == null) return null;
+    if (data == null || (data is Map && data['isDeleted'] == true)) return null;
     final m = Map<String, dynamic>.from(data);
     m['id'] = chatId;
     return m;
@@ -673,12 +703,20 @@ class LocalStorageService {
       await _openSecureBox('conversations_$userId');
     }
     final box = Hive.box('conversations_$userId');
-    return box.toMap().entries.map((entry) {
-      final key = entry.key.toString();
-      final value = Map<String, dynamic>.from(entry.value as Map);
-      value['id'] = key;
-      return value;
-    }).toList();
+    return box
+        .toMap()
+        .entries
+        .where(
+          (entry) =>
+              entry.value is Map && (entry.value as Map)['isDeleted'] != true,
+        )
+        .map((entry) {
+          final key = entry.key.toString();
+          final value = Map<String, dynamic>.from(entry.value as Map);
+          value['id'] = key;
+          return value;
+        })
+        .toList();
   }
 
   Stream<List<Map<String, dynamic>>> watchConversations(String userId) async* {
@@ -696,12 +734,23 @@ class LocalStorageService {
     }
 
     List<Map<String, dynamic>> getList() {
-      final list = box.toMap().entries.map((entry) {
-        final key = entry.key.toString();
-        final value = Map<String, dynamic>.from(entry.value as Map);
-        value['id'] = key;
-        return value;
-      }).toList()..sort((a, b) => getTimestamp(b).compareTo(getTimestamp(a)));
+      final list =
+          box
+              .toMap()
+              .entries
+              .where(
+                (entry) =>
+                    entry.value is Map &&
+                    (entry.value as Map)['isDeleted'] != true,
+              )
+              .map((entry) {
+                final key = entry.key.toString();
+                final value = Map<String, dynamic>.from(entry.value as Map);
+                value['id'] = key;
+                return value;
+              })
+              .toList()
+            ..sort((a, b) => getTimestamp(b).compareTo(getTimestamp(a)));
 
       print(
         'DEBUG: watchConversations getList() returned ${list.length} conversations for user $userId',
@@ -724,8 +773,6 @@ class LocalStorageService {
       return getList();
     });
   }
-
-
 
   /// Clears all messages for a user by deleting all message boxes
   Future<void> clearAllMessages(String userId) async {

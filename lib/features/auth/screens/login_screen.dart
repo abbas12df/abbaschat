@@ -58,8 +58,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (email.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('برجاء إدخال البريد الإلكتروني أولاً لإرسال رابط الاستعادة'),
-          backgroundColor: Colors.orange,
+          content: Text(
+            'برجاء إدخال البريد الإلكتروني أولاً لإرسال رابط الاستعادة',
+          ),
         ),
       );
       return;
@@ -70,8 +71,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('تم إرسال رابط استعادة كلمة المرور إلى بريدك الإلكتروني ✅'),
-            backgroundColor: Colors.green,
+            content: Text(
+              'تم إرسال رابط استعادة كلمة المرور إلى بريدك الإلكتروني',
+            ),
           ),
         );
       }
@@ -111,22 +113,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 const SizedBox(height: 16),
                 // Fun bubbly icon
                 Center(
-                  child: Container(
-                    width: 100,
-                    height: 100,
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(40),
-                    ),
-                    child: Center(
-                      child: Image.asset(
-                        'assets/images/app_logo_transparent.png',
-                        width: 70,
-                        height: 70,
+                      child: Container(
+                        width: 100,
+                        height: 100,
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary.withValues(
+                            alpha: 0.1,
+                          ),
+                          borderRadius: BorderRadius.circular(40),
+                        ),
+                        child: Center(
+                          child: Image.asset(
+                            'assets/images/app_logo_transparent.png',
+                            width: 70,
+                            height: 70,
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                )
+                    )
                     .animate()
                     .scale(curve: Curves.easeOutBack, duration: 600.ms)
                     .fadeIn(),
@@ -135,85 +139,101 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                 // Greeting
                 Text(
-                  'مرحباً بعودتك!',
-                  style: theme.textTheme.displayMedium?.copyWith(
-                    color: theme.colorScheme.primary,
-                  ),
-                  textAlign: TextAlign.center,
-                ).animate().fadeIn(delay: 100.ms).slideY(begin: 0.2, curve: Curves.easeOutBack),
+                      'مرحباً بعودتك!',
+                      style: theme.textTheme.displayMedium?.copyWith(
+                        color: theme.colorScheme.primary,
+                      ),
+                      textAlign: TextAlign.center,
+                    )
+                    .animate()
+                    .fadeIn(delay: 100.ms)
+                    .slideY(begin: 0.2, curve: Curves.easeOutBack),
 
                 const SizedBox(height: 12),
                 Text(
-                  'سجل دخولك للمتابعة والتواصل بشكل آمن.',
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                  textAlign: TextAlign.center,
-                ).animate().fadeIn(delay: 200.ms).slideY(begin: 0.2, curve: Curves.easeOutBack),
+                      'سجل دخولك للمتابعة والتواصل بشكل آمن.',
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                      textAlign: TextAlign.center,
+                    )
+                    .animate()
+                    .fadeIn(delay: 200.ms)
+                    .slideY(begin: 0.2, curve: Curves.easeOutBack),
 
                 const SizedBox(height: 48),
 
                 // Inputs directly on the surface, or inside a soft shadow card
                 NisabaCard(
-                  hasShadow: true,
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    children: [
-                      NisabaTextField(
-                        controller: _emailController,
-                        labelText: 'البريد الإلكتروني',
-                        prefixIcon: Icons.alternate_email_rounded,
-                        keyboardType: TextInputType.emailAddress,
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'يرجى إدخال البريد الإلكتروني';
-                          }
-                          return null;
-                        },
+                      hasShadow: true,
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        children: [
+                          NisabaTextField(
+                            controller: _emailController,
+                            labelText: 'البريد الإلكتروني',
+                            prefixIcon: Icons.alternate_email_rounded,
+                            keyboardType: TextInputType.emailAddress,
+                            validator: (value) {
+                              if (value == null || value.trim().isEmpty) {
+                                return 'يرجى إدخال البريد الإلكتروني';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 20),
+                          NisabaTextField(
+                            controller: _passController,
+                            labelText: 'كلمة المرور',
+                            prefixIcon: Icons.lock_rounded,
+                            isPassword: true,
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'يرجى إدخال كلمة المرور';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: NisabaButton(
+                              text: 'هل نسيت كلمة السر؟',
+                              type: NisabaButtonType.text,
+                              fullWidth: false,
+                              onPressed: _forgotPassword,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 20),
-                      NisabaTextField(
-                        controller: _passController,
-                        labelText: 'كلمة المرور',
-                        prefixIcon: Icons.lock_rounded,
-                        isPassword: true,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'يرجى إدخال كلمة المرور';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: NisabaButton(
-                          text: 'هل نسيت كلمة السر؟',
-                          type: NisabaButtonType.text,
-                          fullWidth: false,
-                          onPressed: _forgotPassword,
-                        ),
-                      ),
-                    ],
-                  ),
-                ).animate().fadeIn(delay: 300.ms).slideY(begin: 0.1, curve: Curves.easeOutBack),
+                    )
+                    .animate()
+                    .fadeIn(delay: 300.ms)
+                    .slideY(begin: 0.1, curve: Curves.easeOutBack),
 
                 const SizedBox(height: 32),
 
                 // Login Button
                 NisabaButton(
-                  text: 'تسجيل الدخول',
-                  isLoading: _isLoading,
-                  onPressed: _login,
-                  icon: Icons.login_rounded,
-                ).animate().fadeIn(delay: 400.ms).scale(curve: Curves.easeOutBack),
+                      text: 'تسجيل الدخول',
+                      isLoading: _isLoading,
+                      onPressed: _login,
+                      icon: Icons.login_rounded,
+                    )
+                    .animate()
+                    .fadeIn(delay: 400.ms)
+                    .scale(curve: Curves.easeOutBack),
 
                 const SizedBox(height: 40),
 
                 // Social Login Section
                 Row(
                   children: [
-                    Expanded(child: Divider(color: theme.colorScheme.surfaceContainerHighest)),
+                    Expanded(
+                      child: Divider(
+                        color: theme.colorScheme.surfaceContainerHighest,
+                      ),
+                    ),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Text(
@@ -223,68 +243,87 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                       ),
                     ),
-                    Expanded(child: Divider(color: theme.colorScheme.surfaceContainerHighest)),
+                    Expanded(
+                      child: Divider(
+                        color: theme.colorScheme.surfaceContainerHighest,
+                      ),
+                    ),
                   ],
                 ).animate().fadeIn(delay: 500.ms),
 
                 const SizedBox(height: 24),
 
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _buildSocialButton(
-                      icon: Icons.g_mobiledata_rounded,
-                      color: isDark ? const Color(0xFF1E293B) : Colors.red.shade50,
-                      iconColor: Colors.red,
-                      onTap: () async {
-                        try {
-                          setState(() => _isLoading = true);
-                          await ref.read(authServiceProvider).signInWithGoogle();
-                          if (mounted) {
-                            Navigator.of(context).pushAndRemoveUntil(
-                              MaterialPageRoute(builder: (_) => const AuthWrapper()),
-                              (route) => false,
-                            );
-                          }
-                        } catch (e) {
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('خطأ: $e')),
-                            );
-                          }
-                        } finally {
-                          if (mounted) setState(() => _isLoading = false);
-                        }
-                      },
-                    ),
-                    const SizedBox(width: 24),
-                    _buildSocialButton(
-                      icon: Icons.apple_rounded,
-                      color: isDark ? const Color(0xFF1E293B) : Colors.black87,
-                      iconColor: Colors.white,
-                      onTap: () async {
-                        try {
-                          setState(() => _isLoading = true);
-                          await ref.read(authServiceProvider).signInWithApple();
-                          if (mounted) {
-                            Navigator.of(context).pushAndRemoveUntil(
-                              MaterialPageRoute(builder: (_) => const AuthWrapper()),
-                              (route) => false,
-                            );
-                          }
-                        } catch (e) {
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('خطأ: $e')),
-                            );
-                          }
-                        } finally {
-                          if (mounted) setState(() => _isLoading = false);
-                        }
-                      },
-                    ),
-                  ],
-                ).animate().fadeIn(delay: 600.ms).scale(curve: Curves.easeOutBack),
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _buildSocialButton(
+                          icon: Icons.g_mobiledata_rounded,
+                          color: isDark
+                              ? const Color(0xFF1E293B)
+                              : Colors.red.shade50,
+                          iconColor: Colors.red,
+                          onTap: () async {
+                            try {
+                              setState(() => _isLoading = true);
+                              await ref
+                                  .read(authServiceProvider)
+                                  .signInWithGoogle();
+                              if (mounted) {
+                                Navigator.of(context).pushAndRemoveUntil(
+                                  MaterialPageRoute(
+                                    builder: (_) => const AuthWrapper(),
+                                  ),
+                                  (route) => false,
+                                );
+                              }
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('خطأ: $e')),
+                                );
+                              }
+                            } finally {
+                              if (mounted) setState(() => _isLoading = false);
+                            }
+                          },
+                        ),
+                        const SizedBox(width: 24),
+                        _buildSocialButton(
+                          icon: Icons.apple_rounded,
+                          color: isDark
+                              ? const Color(0xFF1E293B)
+                              : Colors.black87,
+                          iconColor: Colors.white,
+                          onTap: () async {
+                            try {
+                              setState(() => _isLoading = true);
+                              await ref
+                                  .read(authServiceProvider)
+                                  .signInWithApple();
+                              if (mounted) {
+                                Navigator.of(context).pushAndRemoveUntil(
+                                  MaterialPageRoute(
+                                    builder: (_) => const AuthWrapper(),
+                                  ),
+                                  (route) => false,
+                                );
+                              }
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('خطأ: $e')),
+                                );
+                              }
+                            } finally {
+                              if (mounted) setState(() => _isLoading = false);
+                            }
+                          },
+                        ),
+                      ],
+                    )
+                    .animate()
+                    .fadeIn(delay: 600.ms)
+                    .scale(curve: Curves.easeOutBack),
 
                 const SizedBox(height: 32),
 
@@ -306,7 +345,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       onPressed: () {
                         Navigator.pushReplacement(
                           context,
-                          MaterialPageRoute(builder: (_) => const RegisterScreen()),
+                          MaterialPageRoute(
+                            builder: (_) => const RegisterScreen(),
+                          ),
                         );
                       },
                     ),
@@ -333,7 +374,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         borderRadius: BorderRadius.circular(24),
         child: Container(
           width: 64, // Bigger for squircle feel
-          height: 64, 
+          height: 64,
           decoration: BoxDecoration(
             color: color,
             borderRadius: BorderRadius.circular(24),

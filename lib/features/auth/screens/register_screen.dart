@@ -21,7 +21,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _passController = TextEditingController();
   final _confirmPassController = TextEditingController();
   bool _isLoading = false;
-  
+
   // Password validation state
   bool _hasMinLength = false;
   bool _hasUppercase = false;
@@ -89,7 +89,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('فشل التسجيل: ${e.toString().contains('email-already-in-use') ? 'البريد مستخدم بالفعل' : 'حدث خطأ'}'),
+            content: Text(
+              'فشل التسجيل: ${e.toString().contains('email-already-in-use') ? 'البريد مستخدم بالفعل' : 'حدث خطأ'}',
+            ),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
@@ -109,21 +111,25 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: isValid 
-                  ? theme.colorScheme.primary 
+              color: isValid
+                  ? theme.colorScheme.primary
                   : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.1),
             ),
             child: Icon(
               isValid ? Icons.check_rounded : Icons.lock_outline_rounded,
               size: 14,
-              color: isValid ? Colors.white : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+              color: isValid
+                  ? Colors.white
+                  : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
             ),
           ),
           const SizedBox(width: 12),
           Text(
             text,
             style: theme.textTheme.labelMedium?.copyWith(
-              color: isValid ? theme.colorScheme.onSurface : theme.colorScheme.onSurfaceVariant,
+              color: isValid
+                  ? theme.colorScheme.onSurface
+                  : theme.colorScheme.onSurfaceVariant,
               fontWeight: isValid ? FontWeight.bold : FontWeight.normal,
             ),
           ),
@@ -153,25 +159,27 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const SizedBox(height: 16),
-                
+
                 // Fun bubbly icon
                 Center(
-                  child: Container(
-                    width: 100,
-                    height: 100,
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.secondary.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(40),
-                    ),
-                    child: Center(
-                      child: Image.asset(
-                        'assets/images/app_logo_transparent.png',
-                        width: 70,
-                        height: 70,
+                      child: Container(
+                        width: 100,
+                        height: 100,
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.secondary.withValues(
+                            alpha: 0.1,
+                          ),
+                          borderRadius: BorderRadius.circular(40),
+                        ),
+                        child: Center(
+                          child: Image.asset(
+                            'assets/images/app_logo_transparent.png',
+                            width: 70,
+                            height: 70,
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                )
+                    )
                     .animate()
                     .scale(curve: Curves.easeOutBack, duration: 600.ms)
                     .fadeIn(),
@@ -179,110 +187,145 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 const SizedBox(height: 32),
 
                 Text(
-                  'إنشاء حساب جديد',
-                  style: theme.textTheme.displayMedium?.copyWith(
-                    color: theme.colorScheme.primary,
-                  ),
-                  textAlign: TextAlign.center,
-                ).animate().fadeIn(delay: 100.ms).slideY(begin: 0.2, curve: Curves.easeOutBack),
+                      'إنشاء حساب جديد',
+                      style: theme.textTheme.displayMedium?.copyWith(
+                        color: theme.colorScheme.primary,
+                      ),
+                      textAlign: TextAlign.center,
+                    )
+                    .animate()
+                    .fadeIn(delay: 100.ms)
+                    .slideY(begin: 0.2, curve: Curves.easeOutBack),
 
                 const SizedBox(height: 12),
                 Text(
-                  'انضم إلينا الآن وابدأ بالتواصل بشكل آمن.',
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                  textAlign: TextAlign.center,
-                ).animate().fadeIn(delay: 200.ms).slideY(begin: 0.2, curve: Curves.easeOutBack),
+                      'انضم إلينا الآن وابدأ بالتواصل بشكل آمن.',
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                      textAlign: TextAlign.center,
+                    )
+                    .animate()
+                    .fadeIn(delay: 200.ms)
+                    .slideY(begin: 0.2, curve: Curves.easeOutBack),
 
                 const SizedBox(height: 48),
 
                 NisabaCard(
-                  hasShadow: true,
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    children: [
-                      NisabaTextField(
-                        controller: _emailController,
-                        labelText: 'البريد الإلكتروني',
-                        prefixIcon: Icons.alternate_email_rounded,
-                        keyboardType: TextInputType.emailAddress,
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'يرجى إدخال البريد الإلكتروني';
-                          }
-                          if (!value.contains('@')) {
-                            return 'بريد إلكتروني غير صالح';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 20),
-                      NisabaTextField(
-                        controller: _passController,
-                        labelText: 'كلمة المرور',
-                        prefixIcon: Icons.lock_outline_rounded,
-                        isPassword: true,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'يرجى إدخال كلمة المرور';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 20),
-                      NisabaTextField(
-                        controller: _confirmPassController,
-                        labelText: 'تأكيد كلمة المرور',
-                        prefixIcon: Icons.lock_rounded,
-                        isPassword: true,
-                        validator: (value) {
-                          if (value != _passController.text) {
-                            return 'كلمات المرور غير متطابقة';
-                          }
-                          return null;
-                        },
-                      ),
-                      
-                      const SizedBox(height: 32),
-                      
-                      // Password Rules indicator (Bubbly style)
-                      Container(
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.surfaceVariant.withValues(alpha: 0.5),
-                          borderRadius: BorderRadius.circular(32),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'يجب أن تحتوي كلمة المرور على:',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                color: theme.colorScheme.primary,
+                      hasShadow: true,
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        children: [
+                          NisabaTextField(
+                            controller: _emailController,
+                            labelText: 'البريد الإلكتروني',
+                            prefixIcon: Icons.alternate_email_rounded,
+                            keyboardType: TextInputType.emailAddress,
+                            validator: (value) {
+                              if (value == null || value.trim().isEmpty) {
+                                return 'يرجى إدخال البريد الإلكتروني';
+                              }
+                              if (!value.contains('@')) {
+                                return 'بريد إلكتروني غير صالح';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 20),
+                          NisabaTextField(
+                            controller: _passController,
+                            labelText: 'كلمة المرور',
+                            prefixIcon: Icons.lock_outline_rounded,
+                            isPassword: true,
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'يرجى إدخال كلمة المرور';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 20),
+                          NisabaTextField(
+                            controller: _confirmPassController,
+                            labelText: 'تأكيد كلمة المرور',
+                            prefixIcon: Icons.lock_rounded,
+                            isPassword: true,
+                            validator: (value) {
+                              if (value != _passController.text) {
+                                return 'كلمات المرور غير متطابقة';
+                              }
+                              return null;
+                            },
+                          ),
+
+                          const SizedBox(height: 32),
+
+                          // Password Rules indicator (Bubbly style)
+                          Container(
+                            padding: const EdgeInsets.all(24),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: theme.colorScheme.outlineVariant,
                               ),
                             ),
-                            const SizedBox(height: 16),
-                            _buildValidationRow('8 أحرف على الأقل', _hasMinLength, theme),
-                            _buildValidationRow('حرف كبير (A-Z)', _hasUppercase, theme),
-                            _buildValidationRow('حرف صغير (a-z)', _hasLowercase, theme),
-                            _buildValidationRow('رقم (0-9)', _hasNumber, theme),
-                            _buildValidationRow('رمز مميز (!@#\$&*)', _hasSpecialChar, theme),
-                          ],
-                        ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'يجب أن تحتوي كلمة المرور على:',
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                _buildValidationRow(
+                                  '8 أحرف على الأقل',
+                                  _hasMinLength,
+                                  theme,
+                                ),
+                                _buildValidationRow(
+                                  'حرف كبير (A-Z)',
+                                  _hasUppercase,
+                                  theme,
+                                ),
+                                _buildValidationRow(
+                                  'حرف صغير (a-z)',
+                                  _hasLowercase,
+                                  theme,
+                                ),
+                                _buildValidationRow(
+                                  'رقم (0-9)',
+                                  _hasNumber,
+                                  theme,
+                                ),
+                                _buildValidationRow(
+                                  'رمز مميز (!@#\$&*)',
+                                  _hasSpecialChar,
+                                  theme,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ).animate().fadeIn(delay: 300.ms).slideY(begin: 0.1, curve: Curves.easeOutBack),
+                    )
+                    .animate()
+                    .fadeIn(delay: 300.ms)
+                    .slideY(begin: 0.1, curve: Curves.easeOutBack),
 
                 const SizedBox(height: 48),
 
                 NisabaButton(
-                  text: 'إنشاء الحساب',
-                  isLoading: _isLoading,
-                  onPressed: _register,
-                  icon: Icons.person_add_rounded,
-                ).animate().fadeIn(delay: 400.ms).scale(curve: Curves.easeOutBack),
+                      text: 'إنشاء الحساب',
+                      isLoading: _isLoading,
+                      onPressed: _register,
+                      icon: Icons.person_add_rounded,
+                    )
+                    .animate()
+                    .fadeIn(delay: 400.ms)
+                    .scale(curve: Curves.easeOutBack),
 
                 const SizedBox(height: 32),
 
@@ -303,13 +346,15 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       onPressed: () {
                         Navigator.pushReplacement(
                           context,
-                          MaterialPageRoute(builder: (_) => const LoginScreen()),
+                          MaterialPageRoute(
+                            builder: (_) => const LoginScreen(),
+                          ),
                         );
                       },
                     ),
                   ],
                 ).animate().fadeIn(delay: 500.ms),
-                
+
                 const SizedBox(height: 32),
               ],
             ),

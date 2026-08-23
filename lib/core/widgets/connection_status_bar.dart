@@ -91,27 +91,39 @@ class _ConnectionStatusBarState extends State<ConnectionStatusBar> {
   Widget build(BuildContext context) {
     if (_isChecking && !_showBanner) return const SizedBox.shrink();
 
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final bannerBackground = _isConnected
+        ? (isDark ? const Color(0xFF14532D) : const Color(0xFFDCFCE7))
+        : (isDark ? const Color(0xFF7F1D1D) : const Color(0xFFFEE2E2));
+    final bannerForeground = _isConnected
+        ? (isDark ? const Color(0xFFBBF7D0) : const Color(0xFF166534))
+        : (isDark ? const Color(0xFFFECACA) : const Color(0xFF991B1B));
+
     return AnimatedSize(
       duration: 300.ms,
       child: _showBanner
           ? Container(
               width: double.infinity,
-              color: _isConnected ? Colors.green : Colors.red,
-              padding: const EdgeInsets.symmetric(vertical: 4),
+              color: bannerBackground,
+              padding: const EdgeInsets.symmetric(vertical: 7),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
                     _isConnected ? Icons.wifi : Icons.wifi_off,
-                    color: Colors.white,
-                    size: 14,
+                    color: bannerForeground,
+                    size: 16,
                   ),
                   const SizedBox(width: 8),
                   Text(
                     _isConnected
                         ? 'تم الاتصال بالإنترنت'
                         : 'لا يوجد اتصال بالإنترنت',
-                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: bannerForeground,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ],
               ),

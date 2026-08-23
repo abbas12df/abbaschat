@@ -31,15 +31,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     try {
       await ref
           .read(chatRepositoryProvider)
-          .updateUserProfile(uid: _currentUser!.uid, displayName: newName.trim());
+          .updateUserProfile(
+            uid: _currentUser!.uid,
+            displayName: newName.trim(),
+          );
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('تم تحديث الاسم')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('تم تحديث الاسم')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('خطأ: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('خطأ: $e')));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -51,15 +56,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     try {
       await ref
           .read(chatRepositoryProvider)
-          .updateUserProfile(uid: _currentUser!.uid, username: newUsername.trim());
+          .updateUserProfile(
+            uid: _currentUser!.uid,
+            username: newUsername.trim(),
+          );
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('تم تحديث اسم المستخدم')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('تم تحديث اسم المستخدم')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('خطأ: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('خطأ: $e')));
       }
     }
   }
@@ -71,13 +81,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           .read(chatRepositoryProvider)
           .updateUserProfile(uid: _currentUser!.uid, bio: newBio.trim());
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('تم تحديث النبذة')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('تم تحديث النبذة')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('خطأ: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('خطأ: $e')));
       }
     }
   }
@@ -96,14 +108,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             .read(chatRepositoryProvider)
             .updateProfilePicture(_currentUser!.uid, File(image.path));
         if (mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(const SnackBar(content: Text('تم تحديث الصورة')));
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('تم تحديث الصورة')));
         }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('خطأ في تحميل الصورة: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('خطأ في تحميل الصورة: $e')));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -139,7 +153,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
 
     final asyncUser = ref.watch(userProfileProvider(uid));
-    
+
     if (asyncUser.isLoading && _currentUser == null) {
       return const ShimmerLoadingScreen(message: 'جاري تحميل الملف الشخصي...');
     }
@@ -149,9 +163,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
 
     if (_currentUser == null) {
-      return const Scaffold(
-        body: Center(child: Text('خطأ في تحميل البيانات')),
-      );
+      return const Scaffold(body: Center(child: Text('خطأ في تحميل البيانات')));
     }
 
     return Scaffold(
@@ -160,6 +172,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.settings_outlined),
+            tooltip: 'إعدادات الملف الشخصي',
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const SettingsScreen()),
@@ -181,13 +194,43 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     children: [
                       Hero(
                         tag: 'profile_pic_${_currentUser!.uid}',
-                        child: CircleAvatar(
-                          radius: 56, // Reduced from 70
-                          backgroundColor: theme.colorScheme.surfaceContainerHighest,
-                          backgroundImage: _getProfileImageProvider(_currentUser!.photoURL),
-                          child: _currentUser!.photoURL == null
-                              ? Icon(Icons.person, size: 48, color: theme.iconTheme.color)
-                              : null,
+                        child: Container(
+                          padding: const EdgeInsets.all(3),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: LinearGradient(
+                              colors: [
+                                theme.colorScheme.primary,
+                                theme.colorScheme.secondary,
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: theme.colorScheme.primary.withValues(
+                                  alpha: 0.24,
+                                ),
+                                blurRadius: 18,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
+                          ),
+                          child: CircleAvatar(
+                            radius: 53,
+                            backgroundColor:
+                                theme.colorScheme.surfaceContainerHighest,
+                            backgroundImage: _getProfileImageProvider(
+                              _currentUser!.photoURL,
+                            ),
+                            child: _currentUser!.photoURL == null
+                                ? Icon(
+                                    Icons.person,
+                                    size: 46,
+                                    color: theme.iconTheme.color,
+                                  )
+                                : null,
+                          ),
                         ),
                       ),
                       Container(
@@ -195,9 +238,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         decoration: BoxDecoration(
                           color: theme.colorScheme.primary,
                           shape: BoxShape.circle,
-                          border: Border.all(color: theme.scaffoldBackgroundColor, width: 2),
+                          border: Border.all(
+                            color: theme.scaffoldBackgroundColor,
+                            width: 2,
+                          ),
                         ),
-                        child: const Icon(Icons.camera_alt, size: 16, color: Colors.white),
+                        child: const Icon(
+                          Icons.camera_alt,
+                          size: 16,
+                          color: Colors.white,
+                        ),
                       ),
                     ],
                   ),
@@ -208,7 +258,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               // Name
               Center(
                 child: GestureDetector(
-                  onTap: () => _showEditDialog('الاسم', _currentUser!.displayName, _updateName),
+                  onTap: () => _showEditDialog(
+                    'الاسم',
+                    _currentUser!.displayName,
+                    _updateName,
+                  ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -217,18 +271,24 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         style: theme.textTheme.headlineMedium,
                       ),
                       const SizedBox(width: 8),
-                      Icon(Icons.edit, size: 16, color: theme.colorScheme.primary),
+                      Icon(
+                        Icons.edit,
+                        size: 16,
+                        color: theme.colorScheme.primary,
+                      ),
                     ],
                   ),
                 ),
               ),
-              
+
               const SizedBox(height: 8),
-              
+
               Center(
                 child: Text(
                   FirebaseAuth.instance.currentUser?.email ?? '',
-                  style: theme.textTheme.bodyMedium?.copyWith(color: theme.textTheme.bodySmall?.color),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.textTheme.bodySmall?.color,
+                  ),
                 ),
               ),
 
@@ -250,15 +310,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 icon: Icons.alternate_email,
                 title: 'اسم المستخدم',
                 subtitle: '@${_currentUser!.username ?? "غير محدد"}',
-                onTap: () => _showEditDialog('اسم المستخدم', _currentUser!.username ?? '', _updateUsername),
+                onTap: () => _showEditDialog(
+                  'اسم المستخدم',
+                  _currentUser!.username ?? '',
+                  _updateUsername,
+                ),
                 showEditIcon: true,
                 theme: theme,
               ),
               _buildListRow(
                 icon: Icons.info_outline,
                 title: 'النبذة',
-                subtitle: _currentUser!.bio?.isNotEmpty == true ? _currentUser!.bio! : 'رقمي، حسابي، هويتي.',
-                onTap: () => _showEditDialog('النبذة', _currentUser!.bio ?? '', _updateBio, maxLines: 3),
+                subtitle: _currentUser!.bio?.isNotEmpty == true
+                    ? _currentUser!.bio!
+                    : 'رقمي، حسابي، هويتي.',
+                onTap: () => _showEditDialog(
+                  'النبذة',
+                  _currentUser!.bio ?? '',
+                  _updateBio,
+                  maxLines: 3,
+                ),
                 showEditIcon: true,
                 theme: theme,
                 showDivider: false,
@@ -278,16 +349,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 leading: Icon(Icons.logout, color: theme.colorScheme.error),
                 title: Text(
                   'تسجيل الخروج',
-                  style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.error),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
                 ),
                 onTap: _confirmLogout,
               ),
-              
+
               const SizedBox(height: 24),
               Center(
                 child: Text(
                   'ID: ${_currentUser!.uid.substring(0, 8)}...',
-                  style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.outline),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.outline,
+                  ),
                 ),
               ),
             ],
@@ -307,13 +382,28 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Widget _buildSectionHeader(String title, ThemeData theme) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Text(
-        title,
-        style: theme.textTheme.labelLarge?.copyWith(
-          color: theme.colorScheme.primary,
-        ),
+      child: Row(
+        children: [
+          Icon(_sectionIcon(title), size: 18, color: theme.colorScheme.primary),
+          const SizedBox(width: 8),
+          Text(
+            title,
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: theme.colorScheme.primary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Divider(color: theme.colorScheme.outlineVariant)),
+        ],
       ),
     );
+  }
+
+  IconData _sectionIcon(String title) {
+    if (title.contains('أمان')) return Icons.shield_outlined;
+    if (title.contains('شخصية')) return Icons.person_outline_rounded;
+    return Icons.layers_outlined;
   }
 
   Widget _buildListRow({
@@ -354,20 +444,25 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 if (showEditIcon)
                   Icon(Icons.edit, size: 16, color: theme.colorScheme.primary)
                 else
-                  Icon(Icons.chevron_right_rounded, size: 18, color: theme.colorScheme.outline),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: theme.colorScheme.outline,
+                  ),
               ],
             ),
           ),
         ),
-        if (showDivider)
-          Divider(indent: 46, color: theme.dividerColor),
+        if (showDivider) Divider(indent: 46, color: theme.dividerColor),
       ],
     );
   }
 
   Widget _buildIdentityCard(ThemeData theme) {
     return FutureBuilder<String?>(
-      future: CryptoService().getPrivateKeyPem().then((_) => CryptoService().getPublicKeyPem()),
+      future: CryptoService().getPrivateKeyPem().then(
+        (_) => CryptoService().getPublicKeyPem(),
+      ),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -379,17 +474,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         return Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: theme.colorScheme.primary.withValues(alpha: 0.1),
+            color: theme.colorScheme.surfaceContainerHigh,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: theme.colorScheme.primary.withValues(alpha: 0.2),
+              color: theme.colorScheme.primary.withValues(alpha: 0.75),
+              width: 1.1,
             ),
           ),
           child: Column(
             children: [
               Row(
                 children: [
-                  Icon(Icons.fingerprint, size: 20, color: theme.colorScheme.primary),
+                  Icon(
+                    Icons.fingerprint,
+                    size: 20,
+                    color: theme.colorScheme.primary,
+                  ),
                   const SizedBox(width: 8),
                   Text('البصمة التعريفية', style: theme.textTheme.titleSmall),
                 ],
@@ -398,7 +498,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               SelectableText(
                 fingerprint,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurface,
                   fontFamily: 'Courier',
                   fontWeight: FontWeight.bold,
                   letterSpacing: 1.2,
@@ -409,8 +510,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 onPressed: () {
                   Clipboard.setData(ClipboardData(text: fingerprint));
                   HapticFeedback.lightImpact();
-                  ScaffoldMessenger.of(context)
-                      .showSnackBar(const SnackBar(content: Text('تم نسخ البصمة التعريفية')));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('تم نسخ البصمة التعريفية')),
+                  );
                 },
                 icon: const Icon(Icons.copy, size: 16),
                 label: const Text('نسخ'),
@@ -422,7 +524,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  Future<void> _showEditDialog(String label, String initialValue, Function(String) onSave, {int maxLines = 1}) async {
+  Future<void> _showEditDialog(
+    String label,
+    String initialValue,
+    Function(String) onSave, {
+    int maxLines = 1,
+  }) async {
     final controller = TextEditingController(text: initialValue);
     await showDialog(
       context: context,
@@ -467,7 +574,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('خروج', style: TextStyle(color: Colors.red)),
+            child: Text(
+              'خروج',
+              style: TextStyle(color: Theme.of(ctx).colorScheme.error),
+            ),
           ),
         ],
       ),

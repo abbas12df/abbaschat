@@ -108,36 +108,48 @@ class SettingsScreen extends ConsumerWidget {
     final theme = Theme.of(context);
 
     return ListView.builder(
-      padding: const EdgeInsets.only(top: 8, bottom: 32),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
       itemCount: sections.length,
       itemBuilder: (context, sectionIndex) {
         final section = sections[sectionIndex];
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Section header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
-              child: Text(
-                section.title,
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: theme.colorScheme.primary,
-                  fontWeight: FontWeight.w600,
+        return Card(
+          margin: const EdgeInsets.only(bottom: 14),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 8),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      section.title,
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
-            // Items — no cards, just clean rows with dividers
-            ...section.items.asMap().entries.map((entry) {
-              final index = entry.key;
-              final item = entry.value;
-              final isLast = index == section.items.length - 1;
+              ...section.items.asMap().entries.map((entry) {
+                final index = entry.key;
+                final item = entry.value;
+                final isLast = index == section.items.length - 1;
 
-              return _SettingsRow(
-                item: item,
-                showDivider: !isLast,
-              );
-            }),
-          ],
+                return _SettingsRow(item: item, showDivider: !isLast);
+              }),
+            ],
+          ),
         );
       },
     );
@@ -157,16 +169,13 @@ class SettingsScreen extends ConsumerWidget {
           SliverPadding(
             padding: const EdgeInsets.all(24),
             sliver: SliverGrid(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final item = allItems[index];
-                  return _SettingsGridTile(
-                    item: item,
-                    autofocus: isTv && index == 0,
-                  );
-                },
-                childCount: allItems.length,
-              ),
+              delegate: SliverChildBuilderDelegate((context, index) {
+                final item = allItems[index];
+                return _SettingsGridTile(
+                  item: item,
+                  autofocus: isTv && index == 0,
+                );
+              }, childCount: allItems.length),
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: isTv ? 3 : 2,
                 crossAxisSpacing: 12,
@@ -187,10 +196,7 @@ class _SettingsRow extends StatelessWidget {
   final _SettingItem item;
   final bool showDivider;
 
-  const _SettingsRow({
-    required this.item,
-    this.showDivider = true,
-  });
+  const _SettingsRow({required this.item, this.showDivider = true});
 
   @override
   Widget build(BuildContext context) {
@@ -200,29 +206,20 @@ class _SettingsRow extends StatelessWidget {
       children: [
         InkWell(
           onTap: () => _open(context, item.destination),
+          borderRadius: BorderRadius.circular(16),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
             child: Row(
               children: [
-                Icon(
-                  item.icon,
-                  size: 22,
-                  color: theme.iconTheme.color,
-                ),
+                Icon(item.icon, size: 22, color: theme.iconTheme.color),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        item.title,
-                        style: theme.textTheme.titleSmall,
-                      ),
+                      Text(item.title, style: theme.textTheme.titleSmall),
                       const SizedBox(height: 2),
-                      Text(
-                        item.subtitle,
-                        style: theme.textTheme.bodySmall,
-                      ),
+                      Text(item.subtitle, style: theme.textTheme.bodySmall),
                     ],
                   ),
                 ),
@@ -236,11 +233,7 @@ class _SettingsRow extends StatelessWidget {
           ),
         ),
         if (showDivider)
-          Divider(
-            height: 0.5,
-            indent: 58,
-            color: theme.dividerColor,
-          ),
+          Divider(height: 0.5, indent: 58, color: theme.dividerColor),
       ],
     );
   }

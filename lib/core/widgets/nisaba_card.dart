@@ -24,15 +24,20 @@ class NisabaCard extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final effectiveColor = color ??
-        (isDark ? theme.colorScheme.surface : theme.colorScheme.surface);
+    final effectiveColor = color ?? theme.colorScheme.surface;
+    final borderColor = theme.colorScheme.outlineVariant.withValues(
+      alpha: isDark ? 0.7 : 0.9,
+    );
 
     return Container(
       decoration: BoxDecoration(
         color: effectiveColor,
         borderRadius: BorderRadius.circular(NisabaTheme.radiusL),
+        border: Border.all(color: borderColor),
         boxShadow: hasShadow
-            ? (isDark ? NisabaTheme.softShadowDark : NisabaTheme.softShadowLight)
+            ? (isDark
+                  ? NisabaTheme.softShadowDark
+                  : NisabaTheme.softShadowLight)
             : null,
       ),
       child: Material(

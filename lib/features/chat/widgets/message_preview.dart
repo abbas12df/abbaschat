@@ -12,17 +12,14 @@ class MessagePreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
     final (displayText, icon) = _parseContent(content);
+    final previewColor = theme.colorScheme.onSurfaceVariant;
 
     return Row(
       children: [
         if (icon != null) ...[
-          Icon(
-            icon,
-            size: 16,
-            color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-          ),
+          Icon(icon, size: 16, color: previewColor),
           const SizedBox(width: 4),
         ],
         Expanded(
@@ -30,10 +27,10 @@ class MessagePreview extends StatelessWidget {
             displayText,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
+            style: theme.textTheme.bodyMedium?.copyWith(
               fontSize: 14,
-              fontWeight: isUnread ? FontWeight.w500 : FontWeight.w400,
-              color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+              fontWeight: isUnread ? FontWeight.w600 : FontWeight.w400,
+              color: isUnread ? theme.colorScheme.onSurface : previewColor,
               height: 1.4,
             ),
           ),
@@ -43,7 +40,6 @@ class MessagePreview extends StatelessWidget {
   }
 
   (String, IconData?) _parseContent(String content) {
-    // Check for media indicators
     if (content.contains('[صورة]') || content.toLowerCase().contains('photo')) {
       return ('صورة', Icons.image_outlined);
     }
@@ -60,7 +56,6 @@ class MessagePreview extends StatelessWidget {
       return ('تم حذف هذه الرسالة', Icons.block_outlined);
     }
 
-    // Regular text message
     return (content, null);
   }
 }

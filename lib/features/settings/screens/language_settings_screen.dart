@@ -7,10 +7,12 @@ class LanguageSettingsScreen extends ConsumerStatefulWidget {
   const LanguageSettingsScreen({super.key});
 
   @override
-  ConsumerState<LanguageSettingsScreen> createState() => _LanguageSettingsScreenState();
+  ConsumerState<LanguageSettingsScreen> createState() =>
+      _LanguageSettingsScreenState();
 }
 
-class _LanguageSettingsScreenState extends ConsumerState<LanguageSettingsScreen> {
+class _LanguageSettingsScreenState
+    extends ConsumerState<LanguageSettingsScreen> {
   String _selectedLanguage = 'ar';
   bool _isLoading = true;
 
@@ -28,7 +30,7 @@ class _LanguageSettingsScreenState extends ConsumerState<LanguageSettingsScreen>
   Future<void> _loadLanguage() async {
     final settings = ref.read(settingsServiceProvider);
     await settings.init();
-    
+
     setState(() {
       _selectedLanguage = settings.language;
       _isLoading = false;
@@ -38,11 +40,13 @@ class _LanguageSettingsScreenState extends ConsumerState<LanguageSettingsScreen>
   Future<void> _updateLanguage(String langCode) async {
     setState(() => _selectedLanguage = langCode);
     await ref.read(settingsServiceProvider).setLanguage(langCode);
-    
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('تم تغيير اللغة إلى ${_languages[langCode]!['native']}'),
+          content: Text(
+            'تم تغيير اللغة إلى ${_languages[langCode]!['native']}',
+          ),
           backgroundColor: Colors.green,
         ),
       );
@@ -67,11 +71,13 @@ class _LanguageSettingsScreenState extends ConsumerState<LanguageSettingsScreen>
             Icons.language,
           ),
           const SizedBox(height: 24),
-          ..._languages.entries.map((entry) => _buildLanguageTile(
-            code: entry.key,
-            name: entry.value['name']!,
-            native: entry.value['native']!,
-          )),
+          ..._languages.entries.map(
+            (entry) => _buildLanguageTile(
+              code: entry.key,
+              name: entry.value['name']!,
+              native: entry.value['native']!,
+            ),
+          ),
         ],
       ).animate().fadeIn(),
     );
@@ -86,8 +92,9 @@ class _LanguageSettingsScreenState extends ConsumerState<LanguageSettingsScreen>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+        color: Theme.of(context).colorScheme.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Row(
         children: [
@@ -132,11 +139,16 @@ class _LanguageSettingsScreenState extends ConsumerState<LanguageSettingsScreen>
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: isSelected ? theme.primaryColor.withValues(alpha: 0.05) : null,
+        color: isSelected
+            ? theme.colorScheme.primaryContainer.withValues(alpha: 0.55)
+            : theme.colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(12),
-        border: isSelected
-            ? Border.all(color: theme.primaryColor.withValues(alpha: 0.3))
-            : null,
+        border: Border.all(
+          color: isSelected
+              ? theme.colorScheme.primary
+              : theme.colorScheme.outlineVariant,
+          width: isSelected ? 1.2 : 0.8,
+        ),
       ),
       child: ListTile(
         onTap: isArabic
@@ -154,8 +166,8 @@ class _LanguageSettingsScreenState extends ConsumerState<LanguageSettingsScreen>
           Icons.check_circle,
           size: 20,
           color: isSelected
-              ? theme.primaryColor
-              : Colors.grey.withValues(alpha: 0.3),
+              ? theme.colorScheme.primary
+              : theme.colorScheme.onSurfaceVariant,
         ),
         title: Row(
           children: [
@@ -163,23 +175,24 @@ class _LanguageSettingsScreenState extends ConsumerState<LanguageSettingsScreen>
               native,
               style: TextStyle(
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                color: isSelected ? theme.primaryColor : null,
+                color: isSelected
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurface,
               ),
             ),
             if (!isArabic) ...[
               const SizedBox(width: 8),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                  color: Colors.orange.withValues(alpha: 0.15),
+                  color: const Color(0xFF5A3B12),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Text(
                   'قريباً',
                   style: TextStyle(
                     fontSize: 10,
-                    color: Colors.orange,
+                    color: const Color(0xFFFFB74D),
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -191,7 +204,10 @@ class _LanguageSettingsScreenState extends ConsumerState<LanguageSettingsScreen>
           isArabic
               ? 'اللغة الرسمية للتطبيق (مُفعلة بالكامل)'
               : 'قيد التطوير - التطبيق يدعم العربية حالياً',
-          style: const TextStyle(fontSize: 12),
+          style: theme.textTheme.bodySmall?.copyWith(
+            fontSize: 12,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
       ),
     );

@@ -93,7 +93,7 @@ class _NotificationsSettingsScreenState
     if (selectedTime != null) {
       final timeString =
           '${selectedTime.hour.toString().padLeft(2, '0')}:${selectedTime.minute.toString().padLeft(2, '0')}';
-      
+
       setState(() {
         if (isStart) {
           _dndStart = timeString;
@@ -140,7 +140,7 @@ class _NotificationsSettingsScreenState
             ),
             subtitle: const Text('استلام تنبيهات عند ورود رسائل جديدة'),
             value: _notificationsEnabled,
-            activeColor: theme.primaryColor,
+            activeColor: theme.colorScheme.primary,
             onChanged: _updateNotifications,
           ),
 
@@ -152,12 +152,12 @@ class _NotificationsSettingsScreenState
             subtitle: const Text('تشغيل نغمة عند الاستلام'),
             value: _soundEnabled,
             onChanged: _notificationsEnabled ? _updateSound : null,
-            activeColor: theme.primaryColor,
+            activeColor: theme.colorScheme.primary,
             secondary: Icon(
               Icons.music_note,
               color: _notificationsEnabled
-                  ? theme.primaryColor
-                  : theme.disabledColor,
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.onSurfaceVariant,
             ),
           ),
           SwitchListTile(
@@ -165,12 +165,12 @@ class _NotificationsSettingsScreenState
             subtitle: const Text('الاهتزاز عند الاستلام'),
             value: _vibrateEnabled,
             onChanged: _notificationsEnabled ? _updateVibrate : null,
-            activeColor: theme.primaryColor,
+            activeColor: theme.colorScheme.primary,
             secondary: Icon(
               Icons.vibration,
               color: _notificationsEnabled
-                  ? theme.primaryColor
-                  : theme.disabledColor,
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.onSurfaceVariant,
             ),
           ),
 
@@ -182,12 +182,12 @@ class _NotificationsSettingsScreenState
             subtitle: const Text('إظهار نص الرسالة داخل الإشعار'),
             value: _showPreview,
             onChanged: _notificationsEnabled ? _updatePreview : null,
-            activeColor: theme.primaryColor,
+            activeColor: theme.colorScheme.primary,
             secondary: Icon(
               Icons.visibility_outlined,
               color: _notificationsEnabled
-                  ? theme.primaryColor
-                  : theme.disabledColor,
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.onSurfaceVariant,
             ),
           ),
 
@@ -199,12 +199,12 @@ class _NotificationsSettingsScreenState
             subtitle: const Text('تعطيل الإشعارات في أوقات معينة'),
             value: _dndEnabled,
             onChanged: _notificationsEnabled ? _updateDND : null,
-            activeColor: theme.primaryColor,
+            activeColor: theme.colorScheme.primary,
             secondary: Icon(
               Icons.bedtime,
               color: _notificationsEnabled && _dndEnabled
-                  ? theme.primaryColor
-                  : theme.disabledColor,
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.onSurfaceVariant,
             ),
           ),
           if (_dndEnabled && _notificationsEnabled)
@@ -249,10 +249,9 @@ class _NotificationsSettingsScreenState
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Theme.of(
-          context,
-        ).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+        color: Theme.of(context).colorScheme.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Row(
         children: [
@@ -274,7 +273,7 @@ class _NotificationsSettingsScreenState
                   subtitle,
                   style: TextStyle(
                     fontSize: 13,
-                    color: Theme.of(context).textTheme.bodySmall?.color,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],

@@ -19,7 +19,7 @@ class AccountSettingsScreen extends ConsumerWidget {
           // Info Card
           Card(
             elevation: 0,
-            color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
+            color: theme.colorScheme.surfaceContainerHigh,
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -43,7 +43,7 @@ class AccountSettingsScreen extends ConsumerWidget {
                   ),
                   Text(
                     user?.email ?? '',
-                    style: TextStyle(color: theme.textTheme.bodySmall?.color),
+                    style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
                   ),
                   const SizedBox(height: 8),
                   Row(
@@ -108,8 +108,9 @@ class AccountSettingsScreen extends ConsumerWidget {
               style: TextStyle(
                 fontSize: 12,
                 color: user?.emailVerified == true
-                    ? Colors.green
-                    : Colors.orange,
+                    ? theme.colorScheme.secondary
+                    : const Color(0xFFFFB74D),
+                fontWeight: FontWeight.w600,
               ),
             ),
             trailing: user?.emailVerified == false
@@ -123,9 +124,16 @@ class AccountSettingsScreen extends ConsumerWidget {
           if (user?.emailVerified == false)
             Card(
               margin: const EdgeInsets.only(top: 8),
-              color: Colors.orange.withOpacity(0.1),
+              color: theme.colorScheme.errorContainer.withValues(alpha: 0.55),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: const BorderSide(color: Color(0xFFFFB74D)),
+              ),
               child: ListTile(
-                leading: const Icon(Icons.warning_amber, color: Colors.orange),
+                leading: const Icon(
+                  Icons.warning_amber,
+                  color: Color(0xFFFFB74D),
+                ),
                 title: const Text(
                   'تحقق من بريدك الإلكتروني',
                   style: TextStyle(fontSize: 13),
@@ -142,15 +150,18 @@ class AccountSettingsScreen extends ConsumerWidget {
             ),
 
           const SizedBox(height: 24),
-          const Text(
+          Text(
             'المنطقة الخطرة',
-            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: theme.colorScheme.error,
+            ),
           ),
           ListTile(
-            leading: const Icon(Icons.delete_forever, color: Colors.red),
-            title: const Text(
+            leading: Icon(Icons.delete_forever, color: theme.colorScheme.error),
+            title: Text(
               'حذف الحساب',
-              style: TextStyle(color: Colors.red),
+              style: TextStyle(color: theme.colorScheme.error),
             ),
             onTap: () => _showDeleteConfirmDialog(context, ref),
           ),
@@ -418,7 +429,7 @@ class AccountSettingsScreen extends ConsumerWidget {
         );
 
         await ref.read(authServiceProvider).updateEmail(confirmed);
-        
+
         if (context.mounted) {
           Navigator.pop(context);
           showDialog(

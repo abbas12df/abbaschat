@@ -76,12 +76,18 @@ class _NisabaButtonState extends State<NisabaButton>
     switch (widget.type) {
       case NisabaButtonType.primary:
         bgColor = theme.colorScheme.primary;
-        textColor = Colors.white;
+        textColor = theme.colorScheme.onPrimary;
         shadows = NisabaTheme.primaryGlow(theme.colorScheme.primary);
         break;
       case NisabaButtonType.secondary:
-        bgColor = isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9);
+        bgColor = isDark
+            ? theme.colorScheme.surfaceContainerHigh
+            : const Color(0xFFF1F5F9);
         textColor = theme.colorScheme.primary;
+        border = Border.all(
+          color: theme.colorScheme.outlineVariant,
+          width: isDark ? 1.0 : 0.0,
+        );
         break;
       case NisabaButtonType.text:
         bgColor = Colors.transparent;
@@ -91,7 +97,7 @@ class _NisabaButtonState extends State<NisabaButton>
 
     if (widget.onPressed == null) {
       bgColor = theme.colorScheme.surfaceContainerHighest;
-      textColor = theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5);
+      textColor = theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.9);
       shadows = null;
     }
 
@@ -99,10 +105,7 @@ class _NisabaButtonState extends State<NisabaButton>
         ? SizedBox(
             height: 24,
             width: 24,
-            child: CircularProgressIndicator(
-              strokeWidth: 3,
-              color: textColor,
-            ),
+            child: CircularProgressIndicator(strokeWidth: 3, color: textColor),
           )
         : Row(
             mainAxisSize: MainAxisSize.min,
@@ -157,8 +160,15 @@ class _NisabaButtonState extends State<NisabaButton>
       ),
     );
 
+    final accessibleButton = Semantics(
+      button: true,
+      enabled: widget.onPressed != null && !widget.isLoading,
+      label: widget.text,
+      child: buttonCore,
+    );
+
     return widget.fullWidth
-        ? SizedBox(width: double.infinity, child: buttonCore)
-        : buttonCore;
+        ? SizedBox(width: double.infinity, child: accessibleButton)
+        : accessibleButton;
   }
 }

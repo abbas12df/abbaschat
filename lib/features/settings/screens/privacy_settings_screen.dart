@@ -102,9 +102,7 @@ class _PrivacySettingsScreenState extends ConsumerState<PrivacySettingsScreen> {
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => const BlockedUsersScreen(),
-                ),
+                MaterialPageRoute(builder: (_) => const BlockedUsersScreen()),
               );
             },
           ),
@@ -119,7 +117,7 @@ class _PrivacySettingsScreenState extends ConsumerState<PrivacySettingsScreen> {
       child: Text(
         title,
         style: TextStyle(
-          color: Theme.of(context).primaryColor,
+          color: Theme.of(context).colorScheme.primary,
           fontWeight: FontWeight.bold,
           fontSize: 14,
         ),
@@ -134,11 +132,22 @@ class _PrivacySettingsScreenState extends ConsumerState<PrivacySettingsScreen> {
     Function(bool) onChanged,
   ) {
     return SwitchListTile(
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-      subtitle: Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+      title: Text(
+        title,
+        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+          fontWeight: FontWeight.w600,
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
+      ),
+      subtitle: Text(
+        subtitle,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
       value: value,
       onChanged: onChanged,
-      activeColor: Theme.of(context).primaryColor,
+      activeColor: Theme.of(context).colorScheme.primary,
       contentPadding: EdgeInsets.zero,
     );
   }

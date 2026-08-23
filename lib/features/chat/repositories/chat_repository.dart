@@ -97,6 +97,13 @@ class ChatRepository {
   final Map<String, String> _downloadExpectedHashes = {};
   final Map<String, String> _downloadFileNames = {};
   final Map<String, Future<void>> _downloadLocks = {}; // Mutex for concurrency
+  // Chunks can arrive before their authenticated file_header because relay
+  // delivery is asynchronous. Keep a bounded, per-room buffer until the
+  // header establishes the metadata needed for safe disk writes.
+  final Map<String, Map<int, Map<String, dynamic>>> _pendingFileChunks = {};
+  final Map<String, int> _pendingFileChunkBytes = {};
+  static const int _maxPendingFileTransfers = 32;
+  static const int _maxPendingBytesPerTransfer = 16 * 1024 * 1024;
 
   // Security Limits
   static const int _maxFileSize = 500 * 1024 * 1024; // 500MB
@@ -136,6 +143,8 @@ class ChatRepository {
     _downloadExpectedHashes.remove(fileId);
     _downloadFileNames.remove(fileId);
     _downloadLocks.remove(fileId);
+    _pendingFileChunks.remove(fileId);
+    _pendingFileChunkBytes.remove(fileId);
 
     try {
       final dir = await getApplicationDocumentsDirectory();
@@ -158,8 +167,10 @@ class ChatRepository {
     final myId = _auth.currentUser?.uid;
     if (myId == null) return;
     try {
-      final doc =
-          await FirebaseFirestore.instance.collection('users').doc(myId).get();
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(myId)
+          .get();
       if (doc.exists) {
         final list = List<String>.from(doc.data()?['blockedUsers'] ?? []);
         _blockedUsersCache = list.toSet();
@@ -219,7 +230,10 @@ class ChatRepository {
       // Find pending messages
       final pending = messages.where((m) {
         final status = m['status'];
-        return status == 'sending' || status == 'failed';
+        // Only retry messages authored by this device. A synchronized copy of
+        // a peer's failed/sending record is history, not an upload job.
+        final senderId = m['senderId']?.toString();
+        return senderId == myId && (status == 'sending' || status == 'failed');
       }).toList();
 
       if (pending.isNotEmpty) {
@@ -374,7 +388,7 @@ class ChatRepository {
   }
 
   Stream<Map<String, dynamic>> getUserPresence(String uid) {
-{
+    {
       return const Stream.empty();
     }
     return FirebaseDatabase.instance.ref('status/$uid').onValue.map((event) {
@@ -707,7 +721,8 @@ class ChatRepository {
           final myId = currentUser.uid;
 
           // Update Local: Enforced Remote Protection
-          final room = _local.getConversation(myId, roomId) ??
+          final room =
+              _local.getConversation(myId, roomId) ??
               <String, dynamic>{
                 'id': roomId,
                 'unreadCount': 0,
@@ -975,10 +990,7 @@ class ChatRepository {
           // إضافة رسالة نظام محلية (System Message)
           final addedIds = List<String>.from(messagePayload['added_ids'] ?? []);
           if (addedIds.isNotEmpty) {
-            await _saveLocalSystemMessage(
-              roomId,
-              'تمت إضافة أعضاء جدد',
-            );
+            await _saveLocalSystemMessage(roomId, 'تمت إضافة أعضاء جدد');
           }
 
           await _relay.sendAck(senderId: senderId, messageId: messageId);
@@ -1053,10 +1065,7 @@ class ChatRepository {
             // إضافة رسالة نظام محلية عند مغادرة شخص آخر
             final user = await getUserData(targetId);
             final name = user?.displayName ?? 'ط¹ط¶ظˆ';
-            await _saveLocalSystemMessage(
-              roomId,
-              '$name غادر المجموعة',
-            );
+            await _saveLocalSystemMessage(roomId, '$name غادر المجموعة');
           }
           await _relay.sendAck(senderId: senderId, messageId: messageId);
           await _relay.deleteFromRelay(messageId);
@@ -1306,10 +1315,7 @@ class ChatRepository {
 
           // Update local messages: Add senderId to 'readBy' for messages in this room
           // We assume this means "User has seen the conversation up to now"
-          await _local.markMessagesAsReadByOther(
-            currentUser.uid,
-            targetRoomId,
-          );
+          await _local.markMessagesAsReadByOther(currentUser.uid, targetRoomId);
 
           // Force UI update by explicitly updating the last message
           try {
@@ -1342,29 +1348,36 @@ class ChatRepository {
         if (msgType == 'file_request') {
           final targetMessageId = messagePayload['targetMessageId'];
           final reqRoomId = messagePayload['roomId'];
-          debugPrint('DEBUG: Processing FILE_REQUEST for message $targetMessageId in room $reqRoomId');
+          debugPrint(
+            'DEBUG: Processing FILE_REQUEST for message $targetMessageId in room $reqRoomId',
+          );
 
           if (targetMessageId != null && reqRoomId != null) {
             // Find if I have the message
             final msgs = await _local.getMessages(currentUser.uid, reqRoomId);
-            final msg = msgs.firstWhere((m) => m['id'] == targetMessageId, orElse: () => <String, dynamic>{});
+            final msg = msgs.firstWhere(
+              (m) => m['id'] == targetMessageId,
+              orElse: () => <String, dynamic>{},
+            );
 
             bool fileSent = false;
             if (msg.isNotEmpty) {
               // Extract file URL
-              String? localPath = msg['imageUrl'] ?? msg['audioUrl'] ?? msg['fileUrl'];
+              String? localPath =
+                  msg['imageUrl'] ?? msg['audioUrl'] ?? msg['fileUrl'];
               if (localPath != null) {
                 final cleanPath = localPath.replaceFirst('file://', '');
                 final file = File(cleanPath);
-                
+
                 if (file.existsSync()) {
                   // Re-send it
                   final fileType = msg['type'] ?? 'file';
                   final fileName = msg['fileName'] ?? cleanPath.split('/').last;
                   final fileSize = await file.length();
-                  
+
                   // Use existing resync approach depending on size/type
-                  if (fileSize > 1024 * 1024 || (fileType == 'file' && fileSize > 500 * 1024)) {
+                  if (fileSize > 1024 * 1024 ||
+                      (fileType == 'file' && fileSize > 500 * 1024)) {
                     await _sendFileInChunks(
                       reqRoomId,
                       targetMessageId, // reuse original ID so it overwrites requester's side seamlessly
@@ -1381,17 +1394,22 @@ class ChatRepository {
                       fileName: fileName,
                     );
                   }
-                  
+
                   fileSent = true;
-                  debugPrint('DEBUG: File found, initiating resync for $targetMessageId');
+                  debugPrint(
+                    'DEBUG: File found, initiating resync for $targetMessageId',
+                  );
                 }
               }
             }
 
             if (!fileSent) {
               // File is permanently lost from my end too! Notify requester.
-              debugPrint('DEBUG: File not found locally. Sending file_not_found relay to requester.');
-              final notFoundMsgId = DateTime.now().millisecondsSinceEpoch.toString() + "_nf";
+              debugPrint(
+                'DEBUG: File not found locally. Sending file_not_found relay to requester.',
+              );
+              final notFoundMsgId =
+                  DateTime.now().millisecondsSinceEpoch.toString() + "_nf";
               await _sendEncryptedContent(
                 reqRoomId,
                 '',
@@ -1410,11 +1428,16 @@ class ChatRepository {
 
         if (msgType == 'file_not_found') {
           final targetMessageId = messagePayload['targetMessageId'];
-          debugPrint('DEBUG: Received FILE_NOT_FOUND for message $targetMessageId');
+          debugPrint(
+            'DEBUG: Received FILE_NOT_FOUND for message $targetMessageId',
+          );
           if (targetMessageId != null) {
-            await _local.updateMessage(currentUser.uid, roomId, targetMessageId, {
-              'status': 'permanently_lost',
-            });
+            await _local.updateMessage(
+              currentUser.uid,
+              roomId,
+              targetMessageId,
+              {'status': 'permanently_lost'},
+            );
           }
           await _relay.sendAck(senderId: senderId, messageId: messageId);
           await _relay.deleteFromRelay(messageId);
@@ -1427,8 +1450,8 @@ class ChatRepository {
         // --- NEW: CHUNKED FILE TRANSFER ---
         if (msgType == 'file_header') {
           debugPrint('DEBUG: Received FILE_HEADER for $messageId');
-          final fileId = messagePayload['fileId'];
-          final fileName = messagePayload['fileName'];
+          final fileId = messagePayload['fileId']?.toString();
+          final fileName = messagePayload['fileName']?.toString();
           final fileSize = messagePayload['fileSize'] is int
               ? messagePayload['fileSize'] as int
               : int.tryParse(messagePayload['fileSize'].toString()) ?? 0;
@@ -1533,7 +1556,8 @@ class ChatRepository {
           _downloadFileNames[fileId] = fileName;
 
           final message = {
-            'id': messageId, // Use the header's ID as the main message ID
+            'id':
+                fileId, // Keep the placeholder ID identical to the transfer ID
             'senderId': senderId,
             'text': '',
             'fileUrl': null,
@@ -1552,176 +1576,83 @@ class ChatRepository {
 
           await _local.saveMessage(currentUser.uid, roomId, message);
 
+          // Drain chunks that were authenticated but arrived before the header.
+          final pendingChunks = _pendingFileChunks.remove(fileId);
+          _pendingFileChunkBytes.remove(fileId);
+          if (pendingChunks != null) {
+            for (final pendingChunk in pendingChunks.values) {
+              final pendingData = pendingChunk['chunkData'];
+              final pendingIndex = _asInt(pendingChunk['chunkIndex']);
+              if (pendingData is String && pendingIndex != null) {
+                await _writeIncomingFileChunk(
+                  roomId,
+                  fileId,
+                  pendingData,
+                  pendingIndex,
+                );
+              }
+              if (!_activeDownloads.containsKey(fileId)) break;
+            }
+          }
+
           await _relay.sendAck(senderId: senderId, messageId: messageId);
           await _relay.deleteFromRelay(messageId);
           return;
         }
 
         if (msgType == 'file_chunk') {
-          final fileId = messagePayload['fileId'];
-          final chunkData = messagePayload['chunkData']; // Base64
-          final chunkIndex = messagePayload['chunkIndex'];
+          // File-control messages are never normal chat messages. Normalize the
+          // identifiers before touching storage so malformed chunks cannot
+          // create blank text rows.
+          final fileId = messagePayload['fileId']?.toString();
+          final chunkData = messagePayload['chunkData'];
+          final chunkIndex = _asInt(messagePayload['chunkIndex']);
 
-          if (fileId != null &&
-              chunkData != null &&
-              chunkIndex != null &&
-              _activeDownloads.containsKey(fileId)) {
-            // --- SECURITY: PREVENT RACE CONDITIONS (P1-8) ---
-            final previousLock = _downloadLocks[fileId];
-            final completer = Completer<void>();
-            _downloadLocks[fileId] = completer.future;
-
-            try {
-              if (previousLock != null) {
-                await previousLock;
+          if (fileId != null && chunkData is String && chunkIndex != null) {
+            if (_activeDownloads.containsKey(fileId)) {
+              await _writeIncomingFileChunk(
+                roomId,
+                fileId,
+                chunkData,
+                chunkIndex,
+              );
+            } else {
+              // Relay delivery is not ordered. Keep a bounded buffer until the
+              // signed header validates the file size/hash/chunk geometry.
+              if (!_pendingFileChunks.containsKey(fileId) &&
+                  _pendingFileChunks.length >= _maxPendingFileTransfers) {
+                _pendingFileChunks.remove(_pendingFileChunks.keys.first);
               }
-
-              // Check if download was cancelled/cleaned up while waiting for lock
-              if (!_activeDownloads.containsKey(fileId)) {
-                return;
+              final pending = _pendingFileChunks.putIfAbsent(
+                fileId,
+                () => <int, Map<String, dynamic>>{},
+              );
+              final encodedBytes = chunkData.length;
+              final currentPendingBytes = _pendingFileChunkBytes[fileId] ?? 0;
+              if (pending.length < _maxChunks &&
+                  currentPendingBytes + encodedBytes <=
+                      _maxPendingBytesPerTransfer) {
+                // Keep only one copy per chunk index; duplicate relay records
+                // must not inflate the memory budget.
+                if (!pending.containsKey(chunkIndex)) {
+                  pending[chunkIndex] = <String, dynamic>{
+                    'chunkData': chunkData,
+                    'chunkIndex': chunkIndex,
+                  };
+                  _pendingFileChunkBytes[fileId] =
+                      currentPendingBytes + encodedBytes;
+                }
               }
-
-              final totalChunks = _downloadTotalChunks[fileId] ?? 1;
-
-              // NEW: Strict bounds validation against Disk DoS
-              if (chunkIndex < 0 ||
-                  chunkIndex >= totalChunks ||
-                  totalChunks > 100000) {
-                debugPrint(
-                  'SECURITY ALERT: Invalid chunk index ($chunkIndex) or totalChunks ($totalChunks). Dropping.',
-                );
-                return;
-              }
-
-              if (chunkIndex >= 0 && chunkIndex < totalChunks) {
-                final bytes = base64Decode(chunkData);
-                final raf = _activeDownloads[fileId]!;
-                final chunkSize = _downloadChunkSizes[fileId] ?? (512 * 1024);
-                final offset = chunkIndex * chunkSize;
-
-                // Validate chunk size (last chunk can be smaller)
-                if (bytes.length > chunkSize) {
-                  debugPrint(
-                    'SECURITY ALERT: Chunk payload larger than chunkSize. Dropping.',
-                  );
-                  return;
-                }
-
-                await raf.setPosition(offset);
-                await raf.writeFrom(bytes);
-
-                // Track chunk
-                final receivedSet = _downloadReceivedChunks[fileId];
-                if (receivedSet != null) {
-                  receivedSet.add(chunkIndex);
-                }
-
-                // Update Progress
-                final received = receivedSet?.length ?? 0;
-                final progress = received / totalChunks;
-
-                final updatedFields = {
-                  'transferProgress': progress,
-                  'status': 'receiving',
-                };
-
-                await _local.updateMessage(
-                  currentUser.uid,
-                  roomId,
-                  fileId,
-                  updatedFields,
-                );
-
-                // --- SECURITY: CHUNK COMPLETION VERIFICATION (P1-1) ---
-                bool isComplete = received == totalChunks;
-                if (isComplete && receivedSet != null) {
-                  for (int i = 0; i < totalChunks; i++) {
-                    if (!receivedSet.contains(i)) {
-                      isComplete = false;
-                      break;
-                    }
-                  }
-                }
-
-                if (isComplete) {
-                  debugPrint(
-                    'DEBUG: File download chunks complete and verified for $fileId',
-                  );
-                  await raf.flush();
-                  await raf.close();
-                  _activeDownloads.remove(fileId);
-
-                  // Hash Verification
-                  final dir = await getApplicationDocumentsDirectory();
-                  final tempFile = File('${dir.path}/${fileId}_temp');
-
-                  final expectedHash = _downloadExpectedHashes[fileId] ?? '';
-                  String actualHash = '';
-                  if (expectedHash.isNotEmpty) {
-                    final digest = await sha256.bind(tempFile.openRead()).first;
-                    actualHash = digest.toString();
-                  }
-
-                  if (expectedHash.isNotEmpty && actualHash != expectedHash) {
-                    debugPrint(
-                      'SECURITY ALERT: Checksum mismatch for $fileId. Expected: $expectedHash, Actual: $actualHash. Dropping.',
-                    );
-                    await tempFile.delete();
-                    await _local.updateMessage(
-                      currentUser.uid,
-                      roomId,
-                      fileId,
-                      {'status': 'failed_checksum'},
-                    );
-                  } else {
-                    debugPrint(
-                      'DEBUG: File checksum verified successfully for $fileId',
-                    );
-                    // Rename to final
-                    final finalName =
-                        '${DateTime.now().millisecondsSinceEpoch}_${_downloadFileNames[fileId]}';
-                    final finalPath = '${dir.path}/$finalName';
-
-                    await tempFile.rename(finalPath);
-
-                    // Finalize Message
-                    await _local.updateMessage(
-                      currentUser.uid,
-                      roomId,
-                      fileId,
-                      {
-                        'transferProgress': 1.0,
-                        'status': 'sent',
-                        'fileUrl': finalPath, // Local path
-                      },
-                    );
-                  }
-
-                  // Clean up state
-                  _downloadReceivedChunks.remove(fileId);
-                  _downloadTotalChunks.remove(fileId);
-                  _downloadChunkSizes.remove(fileId);
-                  _downloadExpectedHashes.remove(fileId);
-                  _downloadFileNames.remove(fileId);
-                  _downloadLocks.remove(fileId);
-                }
-              } else {
-                debugPrint(
-                  'DEBUG: Out of bounds chunkIndex $chunkIndex for $fileId',
-                );
-              }
-            } catch (e) {
-              debugPrint('Error writing chunk: $e');
-            } finally {
-              completer.complete();
+              debugPrint(
+                'DEBUG: Buffered file chunk $chunkIndex for $fileId until header arrives',
+              );
             }
           } else {
-            debugPrint(
-              'DEBUG: Orphaned chunk for $fileId (or download cancelled/not started)',
-            );
+            debugPrint('SECURITY ALERT: Malformed file chunk. Dropping.');
           }
 
-          // Always Ack Chunk
+          // Always acknowledge/delete control records and never fall through
+          // to the generic message saver.
           await _relay.sendAck(senderId: senderId, messageId: messageId);
           await _relay.deleteFromRelay(messageId);
           return;
@@ -1730,7 +1661,8 @@ class ChatRepository {
         // UNKNOWN/CONTROL TYPE GUARD
         // If it's not text, image, audio, and handled above, ignore it.
         // This prevents future control messages from showing up as ghosts.
-        if (!['text', 'image', 'audio', 'file'].contains(msgType)) {
+        if (!['text', 'image', 'audio', 'voice', 'file'].contains(msgType) &&
+            !_isAttachmentType(msgType)) {
           debugPrint(
             'DEBUG: Unknown message type caught: $msgType. Skipping save.',
           );
@@ -1748,14 +1680,14 @@ class ChatRepository {
           // Save Base64 to File
           imageUrl = await _saveBase64ToFile(msgContent, 'image');
         }
-        if (msgType == 'audio') {
+        if (msgType == 'audio' || msgType == 'voice') {
           audioUrl = await _saveBase64ToFile(msgContent, 'audio');
         }
 
         String? fileUrl;
         String? fileName;
-        if (msgType == 'file') {
-          fileName = messagePayload['fileName'];
+        if (msgType == 'file' || _isAttachmentType(msgType)) {
+          fileName = messagePayload['fileName']?.toString();
           fileUrl = await _saveBase64ToFile(
             msgContent,
             'file',
@@ -1771,6 +1703,7 @@ class ChatRepository {
           'audioUrl': audioUrl,
           'fileUrl': fileUrl,
           'fileName': fileName,
+          'fileSize': messagePayload['fileSize'],
           'timestamp':
               data['timestamp'] ?? DateTime.now().millisecondsSinceEpoch,
           'isRead': false,
@@ -1794,8 +1727,7 @@ class ChatRepository {
         String previewText = text;
         if (msgType == 'image') previewText = '📷 صورة';
         if (msgType == 'audio') previewText = '🎤 رسالة صوتية';
-        if (msgType == 'file')
-          previewText = '📁 ملف: ${fileName ?? "مستند"}';
+        if (msgType == 'file') previewText = '📁 ملف: ${fileName ?? "مستند"}';
 
         // Update Conversation List (Unread + Last Message)
         await _updateLocalConversation(
@@ -2049,17 +1981,22 @@ class ChatRepository {
           encryptedBundle: encryptedBundle,
         );
         allFailed = false;
-        
+
         // Send Push Notification via client-side FCM
         if (!isCommand) {
           try {
-            final userDoc = await FirebaseFirestore.instance.collection('users').doc(receiverId).get();
+            final userDoc = await FirebaseFirestore.instance
+                .collection('users')
+                .doc(receiverId)
+                .get();
             final fcmToken = userDoc.data()?['fcmToken'];
             if (fcmToken != null && fcmToken.toString().isNotEmpty) {
               String senderName = _auth.currentUser?.displayName ?? 'مستخدم';
-              String pushTitle = isGroup ? 'رسالة جديدة في المجموعة' : senderName;
+              String pushTitle = isGroup
+                  ? 'رسالة جديدة في المجموعة'
+                  : senderName;
               String pushBody = 'لديك رسالة جديدة';
-              
+
               if (type == 'text') {
                 pushBody = content;
               } else if (type == 'image') {
@@ -2069,11 +2006,11 @@ class ChatRepository {
               } else if (type == 'file') {
                 pushBody = '📁 ملف جديد';
               }
-              
+
               if (isGroup) {
                 pushBody = '$senderName: $pushBody';
               }
-              
+
               await PushNotificationService().sendPushMessage(
                 targetToken: fcmToken,
                 title: pushTitle,
@@ -2082,7 +2019,9 @@ class ChatRepository {
               );
             }
           } catch (pushErr) {
-            debugPrint('DEBUG: Failed to send push notification to $receiverId: $pushErr');
+            debugPrint(
+              'DEBUG: Failed to send push notification to $receiverId: $pushErr',
+            );
           }
         }
       } catch (e) {
@@ -2648,30 +2587,34 @@ class ChatRepository {
     // 2. Fetch the room to get the peer ID
     final room = _local.getConversation(myId, roomId);
     if (room == null) return;
-    
+
     // Determine receiver
     String receiverId = '';
     if (room['isGroup'] == true) {
       // In groups, ideally we'd ask the sender, but for simplicity we can ask the sender of this specific message
       final msgs = await _local.getMessages(myId, roomId);
-      final msg = msgs.firstWhere((m) => m['id'] == messageId, orElse: () => <String, dynamic>{});
+      final msg = msgs.firstWhere(
+        (m) => m['id'] == messageId,
+        orElse: () => <String, dynamic>{},
+      );
       if (msg.isNotEmpty && msg['senderId'] != null) {
         receiverId = msg['senderId'];
       }
     } else {
       // In 1on1, the receiver is the other participant
       final participants = List<String>.from(room['participants'] ?? []);
-      receiverId = participants.firstWhere((id) => id != myId, orElse: () => '');
+      receiverId = participants.firstWhere(
+        (id) => id != myId,
+        orElse: () => '',
+      );
     }
 
     if (receiverId.isEmpty) return;
 
     // 3. Send file_request via relay
-    final relayMsgId = DateTime.now().millisecondsSinceEpoch.toString() + "_req";
-    final payload = {
-      'targetMessageId': messageId,
-      'roomId': roomId,
-    };
+    final relayMsgId =
+        DateTime.now().millisecondsSinceEpoch.toString() + "_req";
+    final payload = {'targetMessageId': messageId, 'roomId': roomId};
 
     try {
       // Wait, we need to send the payload. We can use _sendEncryptedContent's logic, but let's just use it directly.
@@ -2686,9 +2629,77 @@ class ChatRepository {
     } catch (e) {
       debugPrint('DEBUG: Failed to send file_request: $e');
       // Revert status
-      await _local.updateMessage(myId, roomId, messageId, {
-        'status': 'sent',
-      });
+      await _local.updateMessage(myId, roomId, messageId, {'status': 'sent'});
+    }
+  }
+
+  bool _isAttachmentType(String type) {
+    return !{
+      'text',
+      'image',
+      'audio',
+      'voice',
+      'file',
+      'system',
+      'reaction',
+      'edit',
+      'delete',
+      'read_receipt',
+      'file_request',
+      'file_not_found',
+      'file_header',
+      'file_chunk',
+      'join_request',
+      'group_create',
+      'group_update',
+      'group_member_add',
+      'group_member_remove',
+      'group_admin_update',
+      'group_admin_perms_update',
+      'delete_conversation',
+      'cmd_screenshot_protection_request',
+    }.contains(type);
+  }
+
+  int? _asInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  List<int>? _tryDecodeBase64(String value) {
+    try {
+      final compact = value.replaceAll(RegExp(r'\s+'), '');
+      if (compact.isEmpty) return null;
+      final padded = compact.padRight((compact.length + 3) ~/ 4 * 4, '=');
+      final decoded = base64Decode(padded);
+      return decoded.isEmpty ? null : decoded;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool _isMediaMessageType(String type) {
+    return type == 'image' ||
+        type == 'audio' ||
+        type == 'voice' ||
+        type == 'file' ||
+        _isAttachmentType(type);
+  }
+
+  void _setAttachmentPath(
+    Map<String, dynamic> message,
+    String type,
+    String path,
+  ) {
+    if (type == 'image') {
+      message['imageUrl'] = path;
+    } else if (type == 'audio' || type == 'voice') {
+      message['audioUrl'] = path;
+    } else {
+      // Generic documents, videos, archives, and future attachment types all
+      // use fileUrl so the existing file bubble can render them safely.
+      message['fileUrl'] = path;
     }
   }
 
@@ -2721,6 +2732,106 @@ class ChatRepository {
       }
     }
     return null;
+  }
+
+  Future<void> _writeIncomingFileChunk(
+    String roomId,
+    String fileId,
+    String chunkData,
+    int chunkIndex,
+  ) async {
+    final previousLock = _downloadLocks[fileId];
+    final completer = Completer<void>();
+    _downloadLocks[fileId] = completer.future;
+
+    try {
+      if (previousLock != null) await previousLock;
+      final raf = _activeDownloads[fileId];
+      final receivedSet = _downloadReceivedChunks[fileId];
+      final totalChunks = _downloadTotalChunks[fileId];
+      final chunkSize = _downloadChunkSizes[fileId];
+      if (raf == null ||
+          receivedSet == null ||
+          totalChunks == null ||
+          chunkSize == null) {
+        return;
+      }
+      if (chunkIndex < 0 ||
+          chunkIndex >= totalChunks ||
+          totalChunks > _maxChunks) {
+        debugPrint(
+          'SECURITY ALERT: Invalid chunk index $chunkIndex for $fileId.',
+        );
+        return;
+      }
+
+      final bytes = _tryDecodeBase64(chunkData);
+      if (bytes == null || bytes.length > chunkSize || bytes.isEmpty) {
+        debugPrint('SECURITY ALERT: Invalid or oversized chunk for $fileId.');
+        return;
+      }
+
+      await raf.setPosition(chunkIndex * chunkSize);
+      await raf.writeFrom(bytes);
+      receivedSet.add(chunkIndex);
+      final progress = receivedSet.length / totalChunks;
+      await _local.updateMessage(_auth.currentUser!.uid, roomId, fileId, {
+        'transferProgress': progress,
+        'status': 'receiving',
+      });
+
+      if (receivedSet.length != totalChunks ||
+          !List<int>.generate(
+            totalChunks,
+            (i) => i,
+          ).every(receivedSet.contains)) {
+        return;
+      }
+
+      await raf.flush();
+      await raf.close();
+      _activeDownloads.remove(fileId);
+      final dir = await getApplicationDocumentsDirectory();
+      final tempFile = File('${dir.path}/${fileId}_temp');
+      final expectedHash = _downloadExpectedHashes[fileId] ?? '';
+      final digest = await sha256.bind(tempFile.openRead()).first;
+      final actualHash = digest.toString();
+      if (expectedHash.isEmpty || actualHash != expectedHash) {
+        debugPrint('SECURITY ALERT: Checksum mismatch for $fileId.');
+        if (await tempFile.exists()) await tempFile.delete();
+        await _local.updateMessage(_auth.currentUser!.uid, roomId, fileId, {
+          'status': 'failed_checksum',
+        });
+        return;
+      }
+
+      final safeName = (_downloadFileNames[fileId] ?? 'file').replaceAll(
+        RegExp(r'[^A-Za-z0-9._-]'),
+        '_',
+      );
+      final finalPath =
+          '${dir.path}/${DateTime.now().millisecondsSinceEpoch}_$safeName';
+      await tempFile.rename(finalPath);
+      await _local.updateMessage(_auth.currentUser!.uid, roomId, fileId, {
+        'transferProgress': 1.0,
+        'status': 'sent',
+        'fileUrl': finalPath,
+      });
+    } catch (e) {
+      debugPrint('Error writing chunk for $fileId: $e');
+    } finally {
+      completer.complete();
+      if (identical(_downloadLocks[fileId], completer.future)) {
+        _downloadLocks.remove(fileId);
+      }
+      if (!_activeDownloads.containsKey(fileId)) {
+        _downloadReceivedChunks.remove(fileId);
+        _downloadTotalChunks.remove(fileId);
+        _downloadChunkSizes.remove(fileId);
+        _downloadExpectedHashes.remove(fileId);
+        _downloadFileNames.remove(fileId);
+      }
+    }
   }
 
   Future<void> _updateLocalConversation(
@@ -2766,8 +2877,16 @@ class ChatRepository {
     updatedData['id'] = roomId;
     updatedData['participants'] = participants;
     updatedData['isGroup'] = isGroup;
-    updatedData['lastMessage'] = lastMessage;
-    updatedData['lastMessageTime'] = timestamp.millisecondsSinceEpoch;
+
+    // Sync batches may arrive out of order. Never let an older historical
+    // message replace the conversation's newer preview.
+    final currentLastMessageTime = _asInt(updatedData['lastMessageTime']);
+    final incomingTime = timestamp.millisecondsSinceEpoch;
+    if (currentLastMessageTime == null ||
+        incomingTime >= currentLastMessageTime) {
+      updatedData['lastMessage'] = lastMessage;
+      updatedData['lastMessageTime'] = incomingTime;
+    }
     updatedData['unreadCounts'] = unreadCounts;
 
     await _local.updateConversation(myId, roomId, updatedData);
@@ -2867,7 +2986,10 @@ class ChatRepository {
     // Check if exists locally
     final room = _local.getConversation(myId, roomId);
     if (room == null && persist) {
-      // Create locally ONLY if persist is true
+      // This path is reached by an explicit user action (send message/file),
+      // so it is the only automatic entry point allowed to reopen a deleted
+      // chat. Sync/restore paths are guarded before calling this method.
+      await _local.clearConversationDeletion(myId, roomId);
       final newRoom = ChatRoom(
         id: roomId,
         participants: [myId, otherUserId],
@@ -3025,7 +3147,6 @@ class ChatRepository {
     }
 
     try {
-
       final ref = FirebaseDatabase.instance.ref('typing/$roomId/$uid');
       if (isTyping) {
         // Set to true, auto-remove on disconnect to prevent stuck "typing"
@@ -3042,7 +3163,7 @@ class ChatRepository {
   }
 
   Stream<List<String>> getTypingUsers(String roomId) {
-{
+    {
       return const Stream.empty();
     }
     return FirebaseDatabase.instance.ref('typing/$roomId').onValue.map((event) {
@@ -3678,12 +3799,9 @@ class ChatRepository {
 
     // 1. Validate format
     final cleanHandle = handle.toLowerCase().trim();
-    if (cleanHandle.isEmpty)
-      throw Exception('المعرف لا يمكن أن يكون فارغاً');
+    if (cleanHandle.isEmpty) throw Exception('المعرف لا يمكن أن يكون فارغاً');
     if (!RegExp(r'^[a-z0-9_]{3,20}$').hasMatch(cleanHandle)) {
-      throw Exception(
-        'المعرف يجب أن يكون أحرف إنجليزية وأرقام وبطول 3-20',
-      );
+      throw Exception('المعرف يجب أن يكون أحرف إنجليزية وأرقام وبطول 3-20');
     }
 
     // 2. Check Uniqueness (Firestore Transaction)
@@ -3697,9 +3815,7 @@ class ChatRepository {
       await _firestore.runTransaction((transaction) async {
         final handleDoc = await transaction.get(handleRef);
         if (handleDoc.exists && handleDoc.data()?['roomId'] != roomId) {
-          throw Exception(
-            'هذا المعرف مستخدم بالفعل لمجموعة أخرى',
-          );
+          throw Exception('هذا المعرف مستخدم بالفعل لمجموعة أخرى');
         }
 
         // Check current handle to cleanup old one if changing
@@ -3718,9 +3834,7 @@ class ChatRepository {
               'createdAt': FieldValue.serverTimestamp(),
             });
           } else {
-            throw Exception(
-              'بيانات المجموعة غير موجودة (Meta-data missing)',
-            );
+            throw Exception('بيانات المجموعة غير موجودة (Meta-data missing)');
           }
         } else {
           final oldHandle = roomDoc.data()?['groupHandle'];
@@ -3742,9 +3856,7 @@ class ChatRepository {
     } catch (e) {
       debugPrint('Handle Error: $e');
       if (e.toString().contains('permission-denied')) {
-        throw Exception(
-          'لا تملك صلاحية لتعديل المعرف (Permission Denied)',
-        );
+        throw Exception('لا تملك صلاحية لتعديل المعرف (Permission Denied)');
       }
       rethrow;
     }
@@ -4124,7 +4236,7 @@ class ChatRepository {
           encryptedBundle['signature'] = signature;
         }
       }
-      
+
       final cmdId = 'cmd_${DateTime.now().millisecondsSinceEpoch}_$userId';
 
       await _relay.pushToRelay(
@@ -4432,9 +4544,7 @@ class ChatRepository {
         debugPrint('DEBUG: Group is private, would need to send join request');
         // For now, just throw an error
         // In the future, implement join request system
-        throw Exception(
-          'المجموعة خاصة - يجب إرسال طلب انضمام',
-        );
+        throw Exception('المجموعة خاصة - يجب إرسال طلب انضمام');
       }
 
       debugPrint('DEBUG: Successfully joined group @$handle');
@@ -4741,7 +4851,9 @@ class ChatRepository {
       final lastHandled = _lastSyncRequestHandled[request.requesterId];
       if (lastHandled != null &&
           DateTime.now().difference(lastHandled) < const Duration(minutes: 1)) {
-        debugPrint('P2P Sync: Ignoring repeated request from ${request.requesterId}');
+        debugPrint(
+          'P2P Sync: Ignoring repeated request from ${request.requesterId}',
+        );
         await _firestore
             .collection('users')
             .doc(myId)
@@ -4805,13 +4917,12 @@ class ChatRepository {
           } else if (type == 'image') {
             decryptedContent = msg['imageUrl']?.toString();
           } else if (type == 'audio' || type == 'voice') {
-            // CRITICAL FIX: Handle audio messages
             decryptedContent = msg['audioUrl']?.toString();
-          } else if (type == 'file') {
-            // FIX: files were never synced because 'fileUrl' was never read
+          } else if (_isMediaMessageType(type)) {
+            // Generic documents/videos/archives use the common fileUrl field.
             decryptedContent = msg['fileUrl']?.toString();
           } else {
-            // Unknown type - try text as fallback
+            // Control/system records are not history content.
             decryptedContent = msg['text']?.toString();
           }
 
@@ -4831,7 +4942,7 @@ class ChatRepository {
 
         // Handling Media (Image/Audio/File): Convert file to Base64
         // IMPROVED: Better file handling with proper validation
-        if (type == 'image' || type == 'audio' || type == 'voice' || type == 'file') {
+        if (_isMediaMessageType(type)) {
           try {
             final file = File(decryptedContent);
 
@@ -4908,10 +5019,20 @@ class ChatRepository {
         // 2b. SECURITY: Sign the encrypted payload so the receiver can verify
         // the sync data truly comes from the claimed peer (not a Firestore intruder).
         final myPrivKey = await CryptoService().getPrivateKeyPem();
-        if (myPrivKey != null) {
-          final sig = _signPayload(syncMsg['payload'] as String, myPrivKey);
-          if (sig != null) syncMsg['syncSignature'] = sig;
+        if (myPrivKey == null) {
+          debugPrint(
+            'SECURITY: Cannot export sync message ${syncMsg['id']} without a private key.',
+          );
+          continue;
         }
+        final sig = _signPayload(syncMsg['payload'] as String, myPrivKey);
+        if (sig == null || sig.isEmpty) {
+          debugPrint(
+            'SECURITY: Cannot export unsigned sync message ${syncMsg['id']}.',
+          );
+          continue;
+        }
+        syncMsg['syncSignature'] = sig;
 
         // 2c. Preserve file metadata so files keep their name/extension after sync
         if (msg['fileName'] != null) {
@@ -4963,9 +5084,16 @@ class ChatRepository {
         if (msg['isRead'] != null) {
           syncMsg['isRead'] = msg['isRead'];
         }
-        if (msg['status'] != null) {
-          syncMsg['status'] = msg['status']?.toString();
-        }
+        // A sync record is historical data, never a pending upload job.
+        // Normalize transient local states before exporting them.
+        final exportedStatus = msg['status']?.toString();
+        syncMsg['status'] =
+            exportedStatus == 'sending' ||
+                exportedStatus == 'pending' ||
+                exportedStatus == 'failed' ||
+                exportedStatus == 'uploading'
+            ? 'sent'
+            : (exportedStatus ?? 'sent');
 
         reEncryptedBundle.add(syncMsg);
       } // End of validMessages loop
@@ -5143,8 +5271,35 @@ class ChatRepository {
         rawItems = List<Map<String, dynamic>>.from(data['messages']);
       }
 
-      final senderId = data['senderId'];
+      final senderId = data['senderId']?.toString();
+      if (senderId == null || senderId.isEmpty || senderId == myId) {
+        debugPrint('SECURITY: Ignoring sync bundle with invalid senderId');
+        await _firestore
+            .collection('users')
+            .doc(myId)
+            .collection('sync_inbox')
+            .doc(docId)
+            .delete();
+        return;
+      }
+
       final roomId = _getRoomId(myId, senderId);
+      // Conversation deletion is a local user decision. Do not decrypt, write
+      // files, or recreate the conversation when its encrypted tombstone is
+      // present. The inbox document can be safely acknowledged/removed.
+      if (await _local.isConversationDeleted(myId, roomId)) {
+        debugPrint(
+          'P2P Sync: Ignoring bundle for locally deleted chat $roomId',
+        );
+        await _firestore
+            .collection('users')
+            .doc(myId)
+            .collection('sync_inbox')
+            .doc(docId)
+            .delete();
+        return;
+      }
+
       final myPrivateKey = await CryptoService().getPrivateKeyPem();
 
       int restoredCount = 0;
@@ -5228,8 +5383,8 @@ class ChatRepository {
 
       // Sort messages by timestamp (oldest first) to ensure correct order
       finalMessagesToProcess.sort((a, b) {
-        final tsA = a['timestamp'] ?? 0;
-        final tsB = b['timestamp'] ?? 0;
+        final tsA = _asInt(a['timestamp']) ?? 0;
+        final tsB = _asInt(b['timestamp']) ?? 0;
         return tsA.compareTo(tsB);
       });
 
@@ -5241,9 +5396,7 @@ class ChatRepository {
       final List<Map<String, dynamic>> messagesToSave = [];
 
       // Fetch the sender's public key ONCE per bundle for signature checks.
-      final syncSenderKey = senderId != null
-          ? await _keyRepo.getUserPublicKey(senderId.toString())
-          : null;
+      final syncSenderKey = await _keyRepo.getUserPublicKey(senderId);
 
       for (final syncMsg in finalMessagesToProcess) {
         // Validate message ID is present
@@ -5253,6 +5406,22 @@ class ChatRepository {
           );
           continue;
         }
+
+        // Never manufacture a current timestamp for history. That would move
+        // an old message as if it were newly sent.
+        final normalizedTimestamp = _asInt(syncMsg['timestamp']);
+        if (normalizedTimestamp == null || normalizedTimestamp <= 0) {
+          debugPrint(
+            'DEBUG: Skipping sync message ${syncMsg['id']} with invalid timestamp',
+          );
+          continue;
+        }
+        syncMsg['timestamp'] = normalizedTimestamp;
+
+        // A restored record is history, not an outgoing queue item.
+        final restoredSenderId = syncMsg['senderId']?.toString();
+        syncMsg['status'] = restoredSenderId == myId ? 'sent' : 'read';
+        syncMsg['isRead'] = true;
 
         // TOMBSTONE GUARD (all types): never resurrect a message I deleted locally.
         // Previously only media was protected, so deleted texts came back after sync.
@@ -5272,21 +5441,25 @@ class ChatRepository {
           // If the check fails, continue processing (fail-open for availability)
         }
 
-        // SECURITY: Verify the sync signature when present.
-        // Older peers don't sign — accepted transitionaly for compatibility.
+        // SECURITY: Every synchronized record must be signed by the peer.
+        // Do not accept unsigned or unverifiable history data from Firestore.
         final syncSig = syncMsg['syncSignature'] as String?;
-        if (syncSig != null && syncSenderKey != null) {
-          final isValid = CryptoService().verifyString(
-            syncMsg['payload'].toString(),
-            syncSig,
-            syncSenderKey,
+        if (syncSig == null || syncSig.isEmpty || syncSenderKey == null) {
+          debugPrint(
+            'SECURITY ALERT: Missing sync signature/key for message ${syncMsg['id']}. Skipping.',
           );
-          if (!isValid) {
-            debugPrint(
-              'SECURITY ALERT: Invalid sync signature for message ${syncMsg['id']} from $senderId. Skipping.',
-            );
-            continue;
-          }
+          continue;
+        }
+        final isValid = CryptoService().verifyString(
+          syncMsg['payload'].toString(),
+          syncSig,
+          syncSenderKey,
+        );
+        if (!isValid) {
+          debugPrint(
+            'SECURITY ALERT: Invalid sync signature for message ${syncMsg['id']} from $senderId. Skipping.',
+          );
+          continue;
         }
 
         // Decrypt the payload
@@ -5308,119 +5481,139 @@ class ChatRepository {
           // Restore content fields based on type
           if (syncMsg['type'] == 'text') {
             syncMsg['text'] = decryptedContent;
-          } else if (syncMsg['type'] == 'image' ||
-              syncMsg['type'] == 'audio' ||
-              syncMsg['type'] == 'voice' ||
-              syncMsg['type'] == 'file') {
-            // Check if decryptedContent is Base64 (starts with valid chars, no invalid path chars)
-            // Simple heuristic: if it doesn't contain '/', it's likely Base64 (or a very weird filename).
-            // A file path usually has separators. Base64 doesn't.
+          } else if (_isMediaMessageType(
+            syncMsg['type']?.toString() ?? 'file',
+          )) {
+            // Decode by content, not by path characters. '/' and '+' are valid
+            // Base64 characters, so a path-character heuristic loses files.
+            final decodedBytes = _tryDecodeBase64(decryptedContent);
             final isBase64 =
-                !decryptedContent.contains('/') &&
-                !decryptedContent.contains('\\');
+                decodedBytes != null && decryptedContent.length > 16;
 
-            if (isBase64 && decryptedContent.length > 50) {
+            if (isBase64) {
               // --- Prevent Resurrecting Locally Deleted Files ---
-              final existingMsg = await _local.getMessageRaw(myId, roomId, syncMsg['id']);
+              final existingMsg = await _local.getMessageRaw(
+                myId,
+                roomId,
+                syncMsg['id'],
+              );
               bool skipFileWrite = false;
-              
+
               if (existingMsg != null) {
                 if (existingMsg['isDeleted'] == true) {
-                  debugPrint('DEBUG: Skipping media restore for locally deleted message ${syncMsg['id']}');
+                  debugPrint(
+                    'DEBUG: Skipping media restore for locally deleted message ${syncMsg['id']}',
+                  );
                   continue; // Do not process or save this message at all
                 }
-                
+
                 // If it exists but we didn't explicitly request a resync, don't overwrite the file
                 // This prevents re-downloading files the user deliberately deleted from local storage
                 if (existingMsg['status'] != 'requesting_resync') {
-                  debugPrint('DEBUG: Skipping media write for ${syncMsg['id']} (not requesting resync)');
+                  debugPrint(
+                    'DEBUG: Skipping media write for ${syncMsg['id']} (not requesting resync)',
+                  );
                   syncMsg['imageUrl'] = existingMsg['imageUrl'];
                   syncMsg['audioUrl'] = existingMsg['audioUrl'];
                   syncMsg['fileUrl'] = existingMsg['fileUrl'];
                   skipFileWrite = true;
                 }
               }
-              
+
               if (skipFileWrite) {
                 // Since we skipped writing the file, we still want to save the metadata (e.g. read status)
                 // but we don't execute the try-catch block below
               } else {
                 try {
-                final bytes = base64Decode(decryptedContent);
-                final appDir = await getApplicationDocumentsDirectory();
-                // Create a unique filename
-                String extension = 'bin';
-                if (syncMsg['type'] == 'image') extension = 'jpg';
-                else if (syncMsg['type'] == 'audio' || syncMsg['type'] == 'voice') extension = 'm4a';
-                else if (syncMsg['type'] == 'file') extension = syncMsg['fileName']?.split('.').last ?? 'file';
-                
-                final filename =
-                    'synced_${DateTime.now().millisecondsSinceEpoch}_${const Uuid().v4()}.$extension';
-                final localFile = File('${appDir.path}/$filename');
-
-                await localFile.writeAsBytes(bytes);
-
-                // Verify file was written successfully
-                if (await localFile.exists()) {
-                  final fileSize = await localFile.length();
-                  debugPrint(
-                    'DEBUG: ✓ Restored ${syncMsg['type']} file to ${localFile.path} (${(fileSize / 1024).toStringAsFixed(1)} KB)',
-                  );
-
-                  // Update the message with the NEW local path (use absolute path)
-                  if (syncMsg['type'] == 'image') {
-                    syncMsg['imageUrl'] = localFile.absolute.path;
-                  } else if (syncMsg['type'] == 'file') {
-                    syncMsg['fileUrl'] = localFile.absolute.path;
-                  } else {
-                    syncMsg['audioUrl'] = localFile.absolute.path;
+                  final bytes = decodedBytes!;
+                  final appDir = await getApplicationDocumentsDirectory();
+                  // Preserve a safe extension for all attachment types.
+                  String extension = 'bin';
+                  final rawFileName = syncMsg['fileName']?.toString();
+                  if (rawFileName != null && rawFileName.contains('.')) {
+                    final candidate = rawFileName
+                        .split('.')
+                        .last
+                        .replaceAll(RegExp(r'[^A-Za-z0-9]'), '');
+                    if (candidate.isNotEmpty && candidate.length <= 12) {
+                      extension = candidate;
+                    }
                   }
-                } else {
-                  debugPrint(
-                    'DEBUG: ✗ Failed to restore ${syncMsg['type']} - file not created',
-                  );
-                  // Fallback: try to use Base64 directly
-                  if (syncMsg['type'] == 'image') {
-                    syncMsg['imageUrl'] = decryptedContent;
-                  } else if (syncMsg['type'] == 'file') {
-                    syncMsg['fileUrl'] = decryptedContent;
-                  } else {
-                    syncMsg['audioUrl'] = decryptedContent;
+                  if (syncMsg['type'] == 'image') extension = 'jpg';
+                  if (syncMsg['type'] == 'audio' ||
+                      syncMsg['type'] == 'voice') {
+                    extension = 'm4a';
                   }
+
+                  final filename =
+                      'synced_${DateTime.now().millisecondsSinceEpoch}_${const Uuid().v4()}.$extension';
+                  final localFile = File('${appDir.path}/$filename');
+
+                  await localFile.writeAsBytes(bytes);
+
+                  // Verify file was written successfully
+                  if (await localFile.exists()) {
+                    final fileSize = await localFile.length();
+                    debugPrint(
+                      'DEBUG: ✓ Restored ${syncMsg['type']} file to ${localFile.path} (${(fileSize / 1024).toStringAsFixed(1)} KB)',
+                    );
+
+                    // Update the message with the NEW local path (use absolute path)
+                    _setAttachmentPath(
+                      syncMsg,
+                      syncMsg['type']?.toString() ?? 'file',
+                      localFile.absolute.path,
+                    );
+                  } else {
+                    debugPrint(
+                      'DEBUG: ✗ Failed to restore ${syncMsg['type']} - file not created',
+                    );
+                    // Fallback: keep the content in the correct attachment field.
+                    _setAttachmentPath(
+                      syncMsg,
+                      syncMsg['type']?.toString() ?? 'file',
+                      decryptedContent,
+                    );
+                  }
+                } catch (e) {
+                  debugPrint('DEBUG: ✗ Error decoding Base64 media: $e');
+                  // Fallback: keep original string (might be a legacy path).
+                  _setAttachmentPath(
+                    syncMsg,
+                    syncMsg['type']?.toString() ?? 'file',
+                    decryptedContent,
+                  );
                 }
-              } catch (e) {
-                debugPrint('DEBUG: ✗ Error decoding Base64 media: $e');
-                // Fallback: keep original string (might be broken)
-                if (syncMsg['type'] == 'image') {
-                  syncMsg['imageUrl'] = decryptedContent;
-                } else if (syncMsg['type'] == 'file') {
-                  syncMsg['fileUrl'] = decryptedContent;
-                } else {
-                  syncMsg['audioUrl'] = decryptedContent;
-                }
-              }
               } // Close the else block
             } else {
               // Should be a path, but likely invalid on this device.
               debugPrint(
                 'DEBUG: Media content is not Base64 (length=${decryptedContent.length}, contains path chars=${decryptedContent.contains('/') || decryptedContent.contains('\\')})',
               );
-              if (syncMsg['type'] == 'image') {
-                syncMsg['imageUrl'] = decryptedContent;
-              } else if (syncMsg['type'] == 'file') {
-                syncMsg['fileUrl'] = decryptedContent;
-              } else {
-                syncMsg['audioUrl'] = decryptedContent;
-              }
+              _setAttachmentPath(
+                syncMsg,
+                syncMsg['type']?.toString() ?? 'file',
+                decryptedContent,
+              );
             }
           }
 
-          // Ensure timestamp exists (required for sorting)
-          if (syncMsg['timestamp'] == null) {
-            syncMsg['timestamp'] = DateTime.now().millisecondsSinceEpoch;
-          }
-
           // Remove payload after decryption to save space (content is now in text/imageUrl/audioUrl)
+          // Do not persist malformed payloads as blank text bubbles.
+          final restoredType = syncMsg['type']?.toString() ?? 'text';
+          final restoredText = syncMsg['text']?.toString() ?? '';
+          final hasRestoredAttachment =
+              syncMsg['imageUrl']?.toString().isNotEmpty == true ||
+              syncMsg['audioUrl']?.toString().isNotEmpty == true ||
+              syncMsg['fileUrl']?.toString().isNotEmpty == true;
+          if ((restoredType == 'text' && restoredText.trim().isEmpty) ||
+              (restoredType != 'text' && !hasRestoredAttachment)) {
+            debugPrint(
+              'DEBUG: Skipping empty/malformed sync message ${syncMsg['id']} (type=$restoredType)',
+            );
+            continue;
+          }
+          syncMsg['type'] = restoredType;
           syncMsg.remove('payload');
 
           // DEBUG: Log imageUrl for images to verify it's set correctly
@@ -5500,20 +5693,26 @@ class ChatRepository {
         }
       }
 
-      // FIX: Ensure conversation exists in the list (in case it was deleted locally)
+      // Update the conversation preview only after a successful restore. The
+      // deleted-conversation guard above makes this safe, while still allowing
+      // a genuinely missing chat to be restored from a trusted peer.
       if (restoredCount > 0 && finalMessagesToProcess.isNotEmpty) {
-        // Get the last message (newest) for preview (messages are already sorted)
         final lastMsg = finalMessagesToProcess.last;
-        final preview = (lastMsg['type'] == 'image')
+        final lastType = lastMsg['type']?.toString() ?? 'text';
+        final preview = lastType == 'image'
             ? '📷 صورة'
-            : (lastMsg['type'] == 'audio' || lastMsg['type'] == 'voice')
+            : (lastType == 'audio' || lastType == 'voice')
             ? '🎤 رسالة صوتية'
-            : (lastMsg['text'] ?? '');
+            : (lastType == 'file' || _isAttachmentType(lastType))
+            ? '📁 ملف: ${lastMsg['fileName'] ?? "مستند"}'
+            : (lastMsg['text'] ?? '').toString();
         final ts = DateTime.fromMillisecondsSinceEpoch(
-          lastMsg['timestamp'] ?? DateTime.now().millisecondsSinceEpoch,
+          _asInt(lastMsg['timestamp']) ?? DateTime.now().millisecondsSinceEpoch,
         );
 
-        await createOrGetChatRoom(senderId); // Ensures entry exists
+        if (_local.getConversation(myId, roomId) == null) {
+          await createOrGetChatRoom(senderId);
+        }
         await _updateLocalConversation(
           roomId,
           preview,
@@ -5608,9 +5807,10 @@ class ChatRepository {
 
         final roomId = _getRoomId(myId, peerId);
 
-        // Check if exists locally
+        // Check if exists locally or was intentionally deleted on this device.
         final localRoom = _local.getConversation(myId, roomId);
-        if (localRoom == null) {
+        if (localRoom == null &&
+            !await _local.isConversationDeleted(myId, roomId)) {
           // Create placeholder
           debugPrint('DEBUG: Restoring active chat placeholder for $peerId');
           // This creates a blank conversation so it appears in the list
@@ -5657,7 +5857,9 @@ class ChatRepository {
         enabled.toString(),
         'cmd_screenshot_protection_request',
       );
-      debugPrint('DEBUG: Sent screenshot protection request to $_getReceiverIdFromRoom(roomId, myId)');
+      debugPrint(
+        'DEBUG: Sent screenshot protection request to $_getReceiverIdFromRoom(roomId, myId)',
+      );
     }
   }
 }

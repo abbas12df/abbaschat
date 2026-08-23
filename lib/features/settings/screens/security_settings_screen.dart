@@ -82,7 +82,7 @@ class _SecuritySettingsScreenState
             title: const Text('قفل التطبيق'),
             subtitle: const Text('استخدام البصمة أو FaceID لفتح التطبيق'),
             value: _appLockEnabled,
-            activeColor: Theme.of(context).primaryColor,
+            activeColor: Theme.of(context).colorScheme.primary,
             onChanged: (val) => _handleAppLockToggle(val),
           ),
 
@@ -96,7 +96,7 @@ class _SecuritySettingsScreenState
               'يحمي جهازك أنت فقط من التقاط الشاشة ويخفي المعاينة بقائمة التطبيقات (لا يمنع الطرف الآخر من تصوير شاشته)',
             ),
             value: _preventScreenshots,
-            activeThumbColor: Theme.of(context).primaryColor,
+            activeThumbColor: Theme.of(context).colorScheme.primary,
             onChanged: _handlePreventScreenshotsToggle,
           ),
 
@@ -208,7 +208,7 @@ class _SecuritySettingsScreenState
       child: Text(
         title,
         style: TextStyle(
-          color: Theme.of(context).textTheme.bodySmall?.color,
+          color: Theme.of(context).colorScheme.primary,
           fontWeight: FontWeight.bold,
           fontSize: 14,
         ),
@@ -315,12 +315,17 @@ class _SecuritySettingsScreenState
                   if (status.containsKey('error'))
                     Text(
                       'Error: ${status['error']}',
-                      style: const TextStyle(color: Colors.red),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
                     ),
                   const SizedBox(height: 10),
-                  const Text(
+                  Text(
                     'نصيحة: تأكد من إعداد البصمة في إعدادات هاتفك، وأنك قمت بإعادة تشغيل التطبيق بالكامل إذا كنت قد أضفت الميزة للتو.',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
@@ -407,13 +412,25 @@ class _SecuritySettingsScreenState
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
-        Text(value),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.end,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+        ),
       ],
     );
   }
-
-
 
   Widget _buildSecurityTile(
     BuildContext context, {
@@ -425,8 +442,19 @@ class _SecuritySettingsScreenState
   }) {
     return ListTile(
       leading: Icon(icon, color: Theme.of(context).iconTheme.color),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-      subtitle: Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+      title: Text(
+        title,
+        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+          fontWeight: FontWeight.bold,
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
+      ),
+      subtitle: Text(
+        subtitle,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
       trailing: trailing,
       onTap: onTap,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

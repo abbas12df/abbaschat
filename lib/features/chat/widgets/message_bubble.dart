@@ -133,9 +133,11 @@ class MessageBubble extends ConsumerWidget {
                                 // Content
                                 if (message.type == 'image')
                                   _buildImage(context, ref)
-                                else if (message.type == 'audio')
+                                else if (message.type == 'audio' ||
+                                    message.type == 'voice')
                                   _buildAudio(context)
-                                else if (message.type == 'file')
+                                else if (message.type == 'file' ||
+                                    message.fileUrl != null)
                                   _buildFile(context, ref)
                                 else
                                   _buildText(context),
@@ -205,7 +207,7 @@ class MessageBubble extends ConsumerWidget {
       final theme = Theme.of(context);
       return BoxDecoration(
         color: isDark
-            ? theme.colorScheme.surfaceVariant
+            ? theme.colorScheme.surfaceContainerHigh
             : theme.colorScheme.surfaceContainerHighest,
         borderRadius: borderRadius,
         boxShadow: [
@@ -649,7 +651,7 @@ class MessageBubble extends ConsumerWidget {
 
     final isDark = theme.brightness == Brightness.dark;
     final otherBgColor = isDark
-        ? theme.colorScheme.surfaceVariant
+        ? theme.colorScheme.surfaceContainerHigh
         : theme.colorScheme.surfaceContainerHighest;
     final otherContentColor = theme.colorScheme.onSurfaceVariant;
     final otherWaveColor = theme.colorScheme.outline.withOpacity(0.5);
@@ -1393,106 +1395,100 @@ class _MissingFileCard extends StatelessWidget {
     final isRequesting = message.status == MessageStatus.requesting_resync;
 
     return Container(
-      constraints: const BoxConstraints(maxWidth: 280),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface.withValues(alpha: 0.8),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-          width: 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+          constraints: const BoxConstraints(maxWidth: 280),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface.withValues(alpha: 0.8),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primaryContainer,
-                    shape: BoxShape.circle,
-                  ),
-                  child: isRequesting
-                      ? SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: theme.colorScheme.onPrimaryContainer,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primaryContainer,
+                        shape: BoxShape.circle,
+                      ),
+                      child: isRequesting
+                          ? SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: theme.colorScheme.onPrimaryContainer,
+                              ),
+                            )
+                          : Icon(
+                              icon,
+                              color: theme.colorScheme.onPrimaryContainer,
+                              size: 24,
+                            ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: theme.colorScheme.onSurface,
+                              fontSize: 14,
+                            ),
                           ),
-                        )
-                      : Icon(
-                          icon,
-                          color: theme.colorScheme.onPrimaryContainer,
-                          size: 24,
-                        ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: theme.colorScheme.onSurface,
-                          fontSize: 14,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        isRequesting ? 'جاري الاستدعاء...' : 'الملف غير موجود',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isRequesting
-                              ? theme.colorScheme.primary
-                              : theme.colorScheme.error,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (!isRequesting) ...[
-                  const SizedBox(width: 8),
-                  Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(8),
-                      onTap: () {
-                        if (onRequestResync != null) {
-                          onRequestResync!(message);
-                        }
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Icon(
-                          Icons.sync_rounded,
-                          color: theme.colorScheme.primary,
-                        ),
+                          const SizedBox(height: 4),
+                          Text(
+                            isRequesting
+                                ? 'جاري الاستدعاء...'
+                                : 'الملف غير موجود',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isRequesting
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.error,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                ],
-              ],
+                    if (!isRequesting) ...[
+                      const SizedBox(width: 8),
+                      IconButton(
+                        tooltip: 'طلب إعادة تنزيل الملف',
+                        onPressed: onRequestResync == null
+                            ? null
+                            : () => onRequestResync!(message),
+                        icon: const Icon(Icons.sync_rounded),
+                        color: theme.colorScheme.primary,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ),
           ),
-        ),
-      ),
-    ).animate(target: isRequesting ? 1 : 0).shimmer(
+        )
+        .animate(target: isRequesting ? 1 : 0)
+        .shimmer(
           duration: const Duration(seconds: 2),
           color: theme.colorScheme.primary.withValues(alpha: 0.2),
         );

@@ -1408,7 +1408,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     return AppBar(
       titleSpacing: 0,
       elevation: 0,
-      scrolledUnderElevation: 0,
+      scrolledUnderElevation: 1,
       actions: [
         // مؤشر تدوير المفاتيح
         if (_isRotatingKeys)
@@ -1434,6 +1434,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
           ),
         IconButton(
           icon: const Icon(Icons.search),
+          tooltip: 'بحث في المحادثة',
           onPressed: () {
             setState(() {
               _isSearching = true;
@@ -1799,18 +1800,26 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
 
   Widget _buildInputTextField() {
     final maxChatWidth = ResponsiveUtils.maxChatContentWidth(context);
+    final theme = Theme.of(context);
 
     return Align(
       alignment: Alignment.center,
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: maxChatWidth),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          margin: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
-            color: Theme.of(context).scaffoldBackgroundColor,
-            border: Border(
-              top: BorderSide(color: Theme.of(context).dividerColor, width: 1),
-            ),
+            color: theme.colorScheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: theme.colorScheme.outlineVariant),
+            boxShadow: [
+              BoxShadow(
+                color: theme.colorScheme.shadow.withValues(alpha: 0.12),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
           child: SafeArea(
             child: Row(
@@ -2031,15 +2040,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                           child: Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .primaryContainer
-                                  .withValues(alpha: 0.3),
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.surfaceContainerHigh,
                               borderRadius: BorderRadius.circular(24),
                               border: Border.all(
                                 color: Theme.of(
                                   context,
-                                ).colorScheme.primary.withValues(alpha: 0.2),
+                                ).colorScheme.primary.withValues(alpha: 0.75),
                                 width: 1.0,
                               ),
                             ),
@@ -2062,10 +2070,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                         if (_editingMessageId != null) _buildEditingPreview(),
                         Container(
                           decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.surface,
-                            borderRadius: BorderRadius.circular(28),
+                            color: theme.colorScheme.surface,
+                            borderRadius: BorderRadius.circular(18),
                             border: Border.all(
-                              color: Theme.of(context).dividerColor,
+                              color: theme.colorScheme.outlineVariant,
                               width: 1,
                             ),
                           ),
@@ -2081,9 +2089,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                             decoration: InputDecoration(
                               hintText: 'اكتب رسالة...',
                               hintStyle: TextStyle(
-                                color: Theme.of(
-                                  context,
-                                ).textTheme.bodySmall?.color?.withOpacity(0.5),
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant
+                                    .withValues(alpha: 0.9),
                                 letterSpacing: 0.2,
                               ),
                               border: InputBorder.none,
@@ -2115,7 +2124,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                                 color: isTextEmpty
                                     ? Theme.of(
                                         context,
-                                      ).colorScheme.surfaceContainerHighest
+                                      ).colorScheme.surfaceContainerHigh
                                     : Theme.of(context).colorScheme.primary,
                                 shape: BoxShape.circle,
                               ),
@@ -2125,7 +2134,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                                     : (_editingMessageId != null
                                           ? Icons.check_rounded
                                           : Icons.send_rounded),
-                                color: Theme.of(context).colorScheme.onPrimary,
+                                color: isTextEmpty
+                                    ? Theme.of(context).colorScheme.onSurface
+                                    : Theme.of(context).colorScheme.onPrimary,
                                 size: 22,
                               ),
                             ),
@@ -2324,10 +2335,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       audioDuration: _totalDuration,
       onRequestResync: (message) {
         if (_roomId != null) {
-          ref.read(chatRepositoryProvider).requestFileResync(
-                _roomId!,
-                message.id,
-              );
+          ref
+              .read(chatRepositoryProvider)
+              .requestFileResync(_roomId!, message.id);
         }
       },
     );

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'app_theme.dart';
+import 'nisaba_theme.dart';
 
 /// Helper class for consistent theme-aware color usage
 class ThemeHelper {
@@ -20,7 +20,7 @@ class ThemeHelper {
 
   /// Get background color with theme awareness
   static Color backgroundColor(BuildContext context) {
-    return Theme.of(context).colorScheme.background;
+    return Theme.of(context).scaffoldBackgroundColor;
   }
 
   /// Get text color based on theme
@@ -39,10 +39,7 @@ class ThemeHelper {
 
   /// Get message bubble color for received messages
   static Color receivedMessageColor(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return isDark
-        ? Theme.of(context).colorScheme.surfaceVariant
-        : Theme.of(context).colorScheme.surfaceContainerHighest;
+    return Theme.of(context).colorScheme.surfaceContainerHighest;
   }
 
   /// Get message text color for sent messages
@@ -62,14 +59,12 @@ class ThemeHelper {
 
   /// Get success color
   static Color successColor(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return isDark ? AppTheme.darkSuccess : const Color(0xFF2E7D32);
+    return NisabaTheme.success;
   }
 
   /// Get warning color
   static Color warningColor(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return isDark ? AppTheme.darkWarning : const Color(0xFFF57C00);
+    return NisabaTheme.warning;
   }
 
   /// Get divider color
