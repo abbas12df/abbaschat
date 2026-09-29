@@ -783,6 +783,6 @@ AbbasChat has not been independently audited by a professional security firm at 
 
 Private communication. Built with security in mind.
 
-Made with ❤️ using Flutter & Firebase.
+Made with❤️ abbas Mohsin.
 
 </div>
